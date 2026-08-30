@@ -11,9 +11,9 @@
 | 鉴权 | Bearer Token |
 | 请求格式 | 无请求体 |
 | 响应格式 | `application/json; charset=utf-8` |
-| 缓存策略 | `Cache-Control: no-store` |
+| 缓存策略 | 私有条件缓存（ETag） |
 
-接口返回当前教师账号下的全部班级及学生名单，不返回积分、考勤、教师密码或教师登录会话。正常数据中的学生 `id` 来自学号，而不是数据库内部 ID。每次请求返回完整名单快照，目前不支持分页或增量同步。
+接口返回当前教师账号下的全部班级及学生名单，不返回积分、考勤、教师密码或教师登录会话。正常数据中的学生 `id` 来自学号，而不是数据库内部 ID。每次 `200` 响应返回完整名单快照，目前不支持分页或增量同步；调用方可使用 ETag 避免重复传输未变化的名单。
 
 ## 服务端配置
 
@@ -46,6 +46,7 @@ docker compose up -d --force-recreate
 | `Authorization` | 是 | 格式必须为 `Bearer <CLASS_SYSTEM_TOKEN>`。 |
 | `Accept` | 否 | 推荐使用 `application/json`。 |
 | `X-Teacher-Username` | 否 | 调用方需要同时传递教师标识时使用；一旦提供，必须与查询参数中的用户名一致，比较时不区分大小写。 |
+| `If-None-Match` | 否 | 传入上一次 `200` 响应的 `ETag`；名单未变化时服务端返回 `304`。 |
 
 接口不使用教师后台的 Cookie，也不接受教师账号密码。
 
@@ -73,6 +74,14 @@ curl --fail-with-body -G "https://classorbit.example.com/api/integration/classes
 
 状态码：`200 OK`
 
+关键响应头：
+
+```http
+Content-Type: application/json; charset=utf-8
+Cache-Control: private, max-age=0, must-revalidate
+ETag: "<名单内容的 SHA-256 摘要>"
+```
+
 ```json
 {
   "classes": [
@@ -96,6 +105,19 @@ curl --fail-with-body -G "https://classorbit.example.com/api/integration/classes
   ]
 }
 ```
+
+## 条件请求与 `304`
+
+调用方应保存上次 `200` 响应中的 `ETag`，下次请求通过 `If-None-Match` 原样传回：
+
+```bash
+curl -i -G "https://classorbit.example.com/api/integration/classes" \
+  --data-urlencode "teacher_username=teacher001" \
+  -H "Authorization: Bearer your-shared-secret" \
+  -H 'If-None-Match: "上一次响应的ETag"'
+```
+
+名单内容没有变化时返回 `304 Not Modified`，响应体为空。调用方继续使用本地已保存的上一份名单；如果没有可用的本地副本，则去掉 `If-None-Match` 重新请求。班级或学生的新增、修改、软删除和恢复都会改变下一次 `200` 响应的 ETag。
 
 ### 响应字段
 
@@ -146,6 +168,7 @@ export type IntegrationClassesResponse = {
 | `403 Forbidden` | 共享密钥错误，或服务端未配置共享密钥 | `共享密钥错误` | 核对双方配置；不要持续重试。 |
 | `404 Not Found` | 教师账号尚未初始化或用户名不存在 | `教师账号不存在` | 核对账号，并确认 ClassOrbit 已完成首次初始化。 |
 | `405 Method Not Allowed` | 使用了 GET 以外的方法 | 由 HTTP 路由返回 | 改用 GET。 |
+| `429 Too Many Requests` | 同一来源在一分钟内请求过多 | `请求过于频繁，请稍后再试` | 等待 `Retry-After` 指定的秒数，再采用退避策略重试。 |
 | `500 Internal Server Error` | 数据库或服务端异常 | `操作失败，请稍后重试` | 使用退避策略有限重试，并通知运维。 |
 
 ## 接入约定与安全要求
@@ -153,7 +176,7 @@ export type IntegrationClassesResponse = {
 1. 生产环境必须使用 HTTPS，避免共享密钥和学生名单被窃听。
 2. 共享密钥代表读取全部班级名单的权限，应只保存在服务端环境变量或密钥管理系统中。
 3. 接口返回学生个人信息，调用方应限制日志内容、缓存范围和数据保留时间。
-4. 响应明确禁止缓存；中间代理和调用方也应遵守 `Cache-Control: no-store`。
+4. `Cache-Control: private, max-age=0, must-revalidate` 允许受信任调用方保存私有副本用于 ETag 校验，但共享代理不得缓存；名单副本仍须按学生个人信息保护。
 5. `id` 始终按字符串解析，不要转换为数字。
 6. 当前系统只支持一个教师账号；请求用户名用于确认调用方读取的是目标教师的数据。
 7. 共享密钥轮换后，需要更新调用方配置并重启或重新创建 ClassOrbit 服务。
@@ -170,7 +193,7 @@ curl --fail "https://classorbit.example.com/api/health"
 健康响应为：
 
 ```json
-{"ok":true}
+{"database":true,"ok":true}
 ```
 
 再执行前述名单请求。收到 `200` 且 `classes` 为数组，即表示鉴权和数据格式均正常。

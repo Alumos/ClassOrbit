@@ -72,7 +72,15 @@ func TestIntegrationClassesEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.createClass(classInput{Grade: "四", ClassNo: "2"}); err != nil {
+	second, err := db.createClass(classInput{Grade: "四", ClassNo: "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deletedStudent, err := db.createStudent(second.ID, studentInput{StudentNo: "2001", Name: "已删除学生"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.deleteStudent(deletedStudent.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.createStudent(first.ID, studentInput{StudentNo: "1002", Name: "李四"}); err != nil {
@@ -104,8 +112,12 @@ func TestIntegrationClassesEndpoint(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("success status = %d: %s", response.Code, response.Body.String())
 	}
-	if response.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("cache policy = %q, want no-store", response.Header().Get("Cache-Control"))
+	if response.Header().Get("Cache-Control") != "private, max-age=0, must-revalidate" {
+		t.Fatalf("cache policy = %q", response.Header().Get("Cache-Control"))
+	}
+	etag := response.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("missing ETag")
 	}
 	var payload integrationClassesResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
@@ -114,11 +126,20 @@ func TestIntegrationClassesEndpoint(t *testing.T) {
 	if len(payload.Classes) != 2 || payload.Classes[0].Name != "三 1 班" || payload.Classes[1].Name != "四 2 班" {
 		t.Fatalf("classes payload = %+v", payload)
 	}
+	conditional := httptest.NewRequest(http.MethodGet, "/api/integration/classes?teacher_username=teacher", nil)
+	conditional.Header.Set("Authorization", "Bearer classorbit-shared-secret")
+	conditional.Header.Set("X-Teacher-Username", "teacher")
+	conditional.Header.Set("If-None-Match", etag)
+	conditionalResponse := httptest.NewRecorder()
+	handler.ServeHTTP(conditionalResponse, conditional)
+	if conditionalResponse.Code != http.StatusNotModified {
+		t.Fatalf("conditional status = %d, want 304", conditionalResponse.Code)
+	}
 	if len(payload.Classes[0].Students) != 2 || payload.Classes[0].Students[0].ID != "1001" || payload.Classes[0].Students[0].Name != "张三" || payload.Classes[0].Students[1].ID != "1002" {
 		t.Fatalf("students payload = %+v", payload.Classes[0].Students)
 	}
 	if payload.Classes[1].Students == nil {
-		t.Fatal("empty class students should be an empty JSON array")
+		t.Fatal("a class containing only deleted students should remain present with an empty JSON array")
 	}
 }
 
@@ -276,6 +297,90 @@ func TestDeleteAttendanceEndpoint(t *testing.T) {
 	response = apiRequest(t, handler, http.MethodDelete, fmt.Sprintf("/api/attendance/%d", session.ID), "", cookie)
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("second delete status = %d: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestClassroomEndToEndAPIFlow(t *testing.T) {
+	_, handler := testAPI(t)
+	setup := apiRequest(t, handler, http.MethodPost, "/api/setup", `{"username":"teacher","password":"strong-pass-123"}`, nil)
+	if setup.Code != http.StatusCreated {
+		t.Fatalf("setup = %d: %s", setup.Code, setup.Body.String())
+	}
+	cookie := responseCookie(t, setup)
+
+	response := apiRequest(t, handler, http.MethodPost, "/api/classes", `{"grade":"三","classNo":"4"}`, cookie)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create class = %d: %s", response.Code, response.Body.String())
+	}
+	var class classRow
+	if err := json.Unmarshal(response.Body.Bytes(), &class); err != nil {
+		t.Fatal(err)
+	}
+	response = apiRequest(t, handler, http.MethodPost, fmt.Sprintf("/api/classes/%d/students", class.ID), `{"studentNo":"01","name":"张同学"}`, cookie)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create student = %d: %s", response.Code, response.Body.String())
+	}
+	var student studentRow
+	if err := json.Unmarshal(response.Body.Bytes(), &student); err != nil {
+		t.Fatal(err)
+	}
+
+	attendanceBody := fmt.Sprintf(`{"classId":%d,"course":"信息科技","sessionAt":"2026-09-07T08:00"}`, class.ID)
+	response = apiRequest(t, handler, http.MethodPost, "/api/attendance", attendanceBody, cookie)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create attendance = %d: %s", response.Code, response.Body.String())
+	}
+	var attendance attendanceView
+	if err := json.Unmarshal(response.Body.Bytes(), &attendance); err != nil {
+		t.Fatal(err)
+	}
+
+	response = apiRequest(t, handler, http.MethodGet, fmt.Sprintf("/api/public/classes/%d/students", class.ID), "", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("public roster = %d: %s", response.Code, response.Body.String())
+	}
+	checkinBody := fmt.Sprintf(`{"classId":%d,"studentId":%d}`, class.ID, student.ID)
+	response = apiRequest(t, handler, http.MethodPost, "/api/public/check-in", checkinBody, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("check in = %d: %s", response.Code, response.Body.String())
+	}
+	response = apiRequest(t, handler, http.MethodPost, fmt.Sprintf("/api/attendance/%d/close", attendance.ID), "", cookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("close attendance = %d: %s", response.Code, response.Body.String())
+	}
+
+	response = apiRequest(t, handler, http.MethodGet, fmt.Sprintf("/api/attendance?class_id=%d&limit=30", class.ID), "", cookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("attendance page = %d: %s", response.Code, response.Body.String())
+	}
+	var page attendancePage
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].PresentCount != 1 || len(page.Items[0].Records) != 0 {
+		t.Fatalf("attendance summary page = %+v", page)
+	}
+}
+
+func TestPasswordChangeRevokesSessions(t *testing.T) {
+	_, handler := testAPI(t)
+	setup := apiRequest(t, handler, http.MethodPost, "/api/setup", `{"username":"teacher","password":"strong-pass-123"}`, nil)
+	cookie := responseCookie(t, setup)
+	response := apiRequest(t, handler, http.MethodPatch, "/api/auth/password", `{"currentPassword":"wrong","newPassword":"new-strong-pass-456"}`, cookie)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong password change = %d", response.Code)
+	}
+	response = apiRequest(t, handler, http.MethodPatch, "/api/auth/password", `{"currentPassword":"strong-pass-123","newPassword":"new-strong-pass-456"}`, cookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("password change = %d: %s", response.Code, response.Body.String())
+	}
+	response = apiRequest(t, handler, http.MethodGet, "/api/dashboard", "", cookie)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("old session after password change = %d", response.Code)
+	}
+	response = apiRequest(t, handler, http.MethodPost, "/api/auth", `{"username":"teacher","password":"new-strong-pass-456"}`, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("login with new password = %d: %s", response.Code, response.Body.String())
 	}
 }
 

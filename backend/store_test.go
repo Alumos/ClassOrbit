@@ -63,30 +63,43 @@ func TestScoreAndAttendanceFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	filtered, err := s.attendance(class.ID, "2026-07-15")
-	if err != nil || len(filtered) != 1 || filtered[0].ID != session.ID {
+	filtered, err := s.attendance(class.ID, "2026-07-15", false, 0, 30)
+	if err != nil || len(filtered.Items) != 1 || filtered.Items[0].ID != session.ID {
 		t.Fatalf("date filter = %+v, %v", filtered, err)
 	}
-	allClasses, err := s.attendance(0, "2026-07-15")
-	if err != nil || len(allClasses) != 1 || allClasses[0].ID != session.ID {
+	allClasses, err := s.attendance(0, "2026-07-15", false, 0, 30)
+	if err != nil || len(allClasses.Items) != 1 || allClasses.Items[0].ID != session.ID {
 		t.Fatalf("all-class date filter = %+v, %v", allClasses, err)
 	}
 	if _, err = s.updateClass(class.ID, classInput{Grade: "四", ClassNo: "2"}); err != nil {
 		t.Fatal(err)
 	}
 	historical, err := s.attendanceByID(session.ID)
-	if err != nil || historical.ClassName != "四 2 班" || historical.Title != "四 2 班 · 2026-07-15 10:20" {
-		t.Fatalf("historical class name should follow class update: %+v, %v", historical, err)
+	if err != nil || historical.ClassName != "三 2 班" || historical.Title != "三 2 班 · 2026-07-15 10:20" {
+		t.Fatalf("historical class snapshot changed unexpectedly: %+v, %v", historical, err)
 	}
 	if err = s.deleteAttendance(second.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.attendanceByID(second.ID); !errors.Is(err, errNotFound) {
-		t.Fatalf("deleted attendance should not exist, got %v", err)
+	deleted, err := s.attendanceByID(second.ID)
+	if err != nil || deleted.DeletedAt == nil {
+		t.Fatalf("deleted attendance should be in trash: %+v, %v", deleted, err)
 	}
 	var recordCount int
-	if err = s.QueryRow(`SELECT COUNT(*) FROM attendance_records WHERE session_id=?`, second.ID).Scan(&recordCount); err != nil || recordCount != 0 {
+	if err = s.QueryRow(`SELECT COUNT(*) FROM attendance_records WHERE session_id=?`, second.ID).Scan(&recordCount); err != nil || recordCount != 2 {
 		t.Fatalf("deleted attendance records = %d, %v", recordCount, err)
+	}
+	if err = s.restoreAttendance(second.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.deleteAttendance(second.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.purgeAttendance(second.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.attendanceByID(second.ID); !errors.Is(err, errNotFound) {
+		t.Fatalf("purged attendance should not exist, got %v", err)
 	}
 	if _, err = s.createAttendance(attendanceInput{ClassID: class.ID, SessionAt: "2026-07-16T10:00"}); err != nil {
 		t.Fatalf("class should allow a new session after deleting the active one: %v", err)
@@ -99,6 +112,210 @@ func TestScoreAndAttendanceFlow(t *testing.T) {
 	imported, err := s.importStudents(class.ID, []studentInput{{StudentNo: "01", Name: "重复学生"}, {StudentNo: "03", Name: "新学生"}})
 	if err != nil || imported["added"] != 1 || imported["skipped"] != 1 {
 		t.Fatalf("student import result = %+v, %v", imported, err)
+	}
+}
+
+func TestAttendanceSnapshotsAndScoreUndo(t *testing.T) {
+	s := testStore(t)
+	class, err := s.createClass(classInput{Grade: "二", ClassNo: "3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	student, err := s.createStudent(class.ID, studentInput{StudentNo: "07", Name: "原姓名"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := s.createAttendance(attendanceInput{ClassID: class.ID, SessionAt: "2026-09-07T08:00"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.updateStudent(student.ID, studentInput{StudentNo: "99", Name: "新姓名"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.deleteStudent(student.ID); err != nil {
+		t.Fatal(err)
+	}
+	history, err := s.attendanceByID(session.ID)
+	if err != nil || len(history.Records) != 1 || history.Records[0].StudentNo != "07" || history.Records[0].Name != "原姓名" {
+		t.Fatalf("attendance snapshot = %+v, %v", history.Records, err)
+	}
+
+	restored, err := s.createStudent(class.ID, studentInput{StudentNo: "99", Name: "新姓名"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := s.changeScore(restored.ID, scoreInput{Delta: 5, Reason: "课堂表现"})
+	if err != nil || updated.Score != 5 {
+		t.Fatalf("score = %+v, %v", updated, err)
+	}
+	events, err := s.scoreEvents(restored.ID)
+	if err != nil || len(events) != 1 || !events[0].Reversible {
+		t.Fatalf("events = %+v, %v", events, err)
+	}
+	updated, err = s.undoScoreEvent(events[0].ID)
+	if err != nil || updated.Score != 0 {
+		t.Fatalf("undo score = %+v, %v", updated, err)
+	}
+	if _, err := s.undoScoreEvent(events[0].ID); !errors.Is(err, errConflict) {
+		t.Fatalf("second undo should conflict, got %v", err)
+	}
+	logs, err := s.auditLogs(100, 0)
+	if err != nil || len(logs) < 5 {
+		t.Fatalf("audit logs = %+v, %v", logs, err)
+	}
+}
+
+func TestAttendanceCursorDoesNotRepeatOlderActiveSession(t *testing.T) {
+	s := testStore(t)
+	first, err := s.createClass(classInput{Grade: "二", ClassNo: "1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.createClass(classInput{Grade: "二", ClassNo: "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, class := range []classRow{first, second} {
+		if _, err := s.createStudent(class.ID, studentInput{StudentNo: "01", Name: "测试学生"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	olderActive, err := s.createAttendance(attendanceInput{ClassID: first.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 2; index++ {
+		session, err := s.createAttendance(attendanceInput{ClassID: second.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.closeAttendance(session.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	firstPage, err := s.attendance(0, "", false, 0, 2)
+	if err != nil || len(firstPage.Items) != 2 || firstPage.NextCursor == 0 {
+		t.Fatalf("first page = %+v, %v", firstPage, err)
+	}
+	secondPage, err := s.attendance(0, "", false, firstPage.NextCursor, 2)
+	if err != nil || len(secondPage.Items) != 1 || secondPage.Items[0].ID != olderActive.ID {
+		t.Fatalf("second page = %+v, %v", secondPage, err)
+	}
+	seen := map[int64]bool{}
+	for _, item := range append(firstPage.Items, secondPage.Items...) {
+		if seen[item.ID] {
+			t.Fatalf("attendance %d appeared on more than one page", item.ID)
+		}
+		seen[item.ID] = true
+	}
+}
+
+func TestBackupReportAndCurrentLesson(t *testing.T) {
+	s := testStore(t)
+	class, err := s.createClass(classInput{Grade: "五", ClassNo: "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.createStudent(class.ID, studentInput{StudentNo: "01", Name: "张同学"}); err != nil {
+		t.Fatal(err)
+	}
+	periods := []schedulePeriod{{1, "08:00", "08:40"}, {2, "08:50", "09:30"}, {3, "09:40", "10:20"}, {4, "13:30", "14:10"}, {5, "14:20", "15:00"}, {6, "15:10", "15:50"}, {7, "16:00", "16:40"}}
+	if _, err := s.updateScheduleSettings(scheduleSettingsInput{SemesterStart: "2026-09-01", SemesterEnd: "2027-01-20", Periods: periods}); err != nil {
+		t.Fatal(err)
+	}
+	lesson, err := s.createScheduleLesson(scheduleInput{ClassID: class.ID, Course: "信息科技", Weekday: 1, Period: 1, LocationOdd: "机房 1", LocationEven: "机房 1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 7, 8, 20, 0, 0, time.Local)
+	current, err := s.currentLesson(now)
+	if err != nil || !current.Detected || current.ClassID != class.ID || current.Source != "regular" || current.SessionAt != "2026-09-07T08:00" {
+		t.Fatalf("current lesson = %+v, %v", current, err)
+	}
+	if _, err := s.setScheduleChange(lesson.ID, scheduleChangeInput{Date: "2026-09-07", Status: "occupied"}); err != nil {
+		t.Fatal(err)
+	}
+	current, err = s.currentLesson(now)
+	if err != nil || current.Detected {
+		t.Fatalf("occupied lesson detected = %+v, %v", current, err)
+	}
+	if _, err := s.setScheduleChange(lesson.ID, scheduleChangeInput{Date: "2026-09-07", Status: "rescheduled", NewDate: "2026-09-07", NewStartTime: "08:10", NewEndTime: "08:50", NewClassID: class.ID}); err != nil {
+		t.Fatal(err)
+	}
+	current, err = s.currentLesson(now)
+	if err != nil || !current.Detected || current.Source != "rescheduled" || current.SessionAt != "2026-09-07T08:10" {
+		t.Fatalf("rescheduled lesson = %+v, %v", current, err)
+	}
+
+	backup, err := s.createBackup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(backup)
+	if err := validateBackupFile(backup); err != nil {
+		t.Fatalf("valid backup rejected: %v", err)
+	}
+	copyStore, err := openStore(backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer copyStore.Close()
+	classes, err := copyStore.classes(false)
+	if err != nil || len(classes) != 1 {
+		t.Fatalf("backup classes = %+v, %v", classes, err)
+	}
+	book, className, err := s.buildReport("roster", class.ID, "", "")
+	if err != nil || className != class.Name {
+		t.Fatalf("report = %q, %v", className, err)
+	}
+	defer book.Close()
+	if rows, err := book.GetRows("报表"); err != nil || len(rows) != 2 {
+		t.Fatalf("report rows = %+v, %v", rows, err)
+	}
+}
+
+func TestBackupValidationAndAutomaticRetention(t *testing.T) {
+	s := testStore(t)
+	invalid := filepath.Join(t.TempDir(), "not-a-classorbit-backup.db")
+	if err := os.WriteFile(invalid, []byte("not sqlite"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateBackupFile(invalid); err == nil {
+		t.Fatal("invalid backup should be rejected")
+	}
+	if _, err := s.createClass(classInput{Grade: "六", ClassNo: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	created, err := s.createAutomaticBackup()
+	if err != nil || created == "" {
+		t.Fatalf("automatic backup = %q, %v", created, err)
+	}
+	if err := validateBackupFile(created); err != nil {
+		t.Fatalf("automatic backup rejected: %v", err)
+	}
+	if duplicate, err := s.createAutomaticBackup(); err != nil || duplicate != "" {
+		t.Fatalf("second daily backup = %q, %v", duplicate, err)
+	}
+	directory := filepath.Dir(created)
+	oldAutomatic := filepath.Join(directory, "classorbit-auto-20000101.db")
+	safety := filepath.Join(directory, "classorbit-before-restore-20000101.db")
+	for _, path := range []string{oldAutomatic, safety} {
+		if err := os.WriteFile(path, []byte("placeholder"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		old := time.Now().AddDate(0, 0, -30)
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := cleanupAutomaticBackups(directory, 14); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(oldAutomatic); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expired automatic backup still exists: %v", err)
+	}
+	if _, err := os.Stat(safety); err != nil {
+		t.Fatalf("pre-restore safety backup should be retained: %v", err)
 	}
 }
 

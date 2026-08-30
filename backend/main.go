@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -30,6 +31,7 @@ type server struct {
 	db               *store
 	public           fs.FS
 	integrationToken string
+	maintenanceMu    sync.RWMutex
 }
 
 const (
@@ -60,7 +62,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
 	if err := initializeTeacherFromEnvironment(db); err != nil {
 		log.Fatal(err)
 	}
@@ -75,11 +76,16 @@ func main() {
 		public:           public,
 		integrationToken: strings.TrimSpace(os.Getenv("CLASS_SYSTEM_TOKEN")),
 	}
+	defer func() { _ = s.db.Close() }()
+	stopBackups := s.startBackupScheduler()
+	defer stopBackups()
 	mux := http.NewServeMux()
 	s.routes(mux)
 	addr := env("ADDR", "127.0.0.1:8080")
 	log.Printf("ClassOrbit server running at http://%s", addr)
-	log.Fatal(http.ListenAndServe(addr, logRequests(s.requireTeacher(mux))))
+	if err := runHTTP(addr, logRequests(securityHeaders(rateLimitPublic(s.maintenance(s.requireTeacher(mux)))))); err != nil {
+		log.Fatal(err)
+	}
 }
 
 // Optional bootstrap for unattended deployments. Existing database credentials always win.
@@ -128,11 +134,12 @@ func databasePath(dataDir string) string {
 }
 
 func (s *server) routes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, http.StatusOK, map[string]bool{"ok": true}) })
+	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/auth", s.authStatus)
 	mux.HandleFunc("POST /api/setup", s.setup)
 	mux.HandleFunc("POST /api/auth", s.login)
 	mux.HandleFunc("DELETE /api/auth", s.logout)
+	mux.HandleFunc("PATCH /api/auth/password", s.changePassword)
 	mux.HandleFunc("GET /api/dashboard", s.getDashboard)
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("PATCH /api/settings", s.updateSettings)
@@ -149,13 +156,17 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/students/{id}", s.updateStudent)
 	mux.HandleFunc("DELETE /api/students/{id}", s.deleteStudent)
 	mux.HandleFunc("POST /api/students/{id}/score", s.changeScore)
+	mux.HandleFunc("POST /api/score-events/{id}/undo", s.undoScore)
 	mux.HandleFunc("GET /api/attendance", s.getAttendance)
 	mux.HandleFunc("POST /api/attendance", s.createAttendance)
 	mux.HandleFunc("GET /api/attendance/{id}", s.getAttendanceByID)
 	mux.HandleFunc("DELETE /api/attendance/{id}", s.deleteAttendance)
+	mux.HandleFunc("POST /api/attendance/{id}/restore", s.restoreAttendance)
+	mux.HandleFunc("DELETE /api/attendance/{id}/permanent", s.purgeAttendance)
 	mux.HandleFunc("POST /api/attendance/{id}/close", s.closeAttendance)
 	mux.HandleFunc("PATCH /api/attendance/{id}/records/{studentID}", s.updateAttendanceRecord)
 	mux.HandleFunc("GET /api/schedule", s.getSchedule)
+	mux.HandleFunc("GET /api/schedule/current", s.getCurrentLesson)
 	mux.HandleFunc("POST /api/schedule", s.createScheduleLesson)
 	mux.HandleFunc("POST /api/schedule/import", s.importSchedule)
 	mux.HandleFunc("PUT /api/schedule/settings", s.updateScheduleSettings)
@@ -169,6 +180,10 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/public/classes/{id}/students", s.getPublicStudents)
 	mux.HandleFunc("POST /api/public/check-in", s.checkIn)
 	mux.HandleFunc("GET /api/integration/classes", s.getIntegrationClasses)
+	mux.HandleFunc("GET /api/admin/audit-logs", s.getAuditLogs)
+	mux.HandleFunc("GET /api/admin/backup", s.downloadBackup)
+	mux.HandleFunc("POST /api/admin/restore", s.restoreBackup)
+	mux.HandleFunc("GET /api/admin/reports", s.exportReport)
 
 	assets := http.FileServer(http.FS(s.public))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -313,6 +328,9 @@ func (s *server) changeScore(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) getAttendance(w http.ResponseWriter, r *http.Request) {
 	classID, _ := strconv.ParseInt(r.URL.Query().Get("class_id"), 10, 64)
+	cursor, _ := strconv.ParseInt(r.URL.Query().Get("cursor"), 10, 64)
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	trash := r.URL.Query().Get("trash") == "true"
 	date := strings.TrimSpace(r.URL.Query().Get("date"))
 	if date != "" {
 		if _, err := time.Parse("2006-01-02", date); err != nil {
@@ -320,7 +338,7 @@ func (s *server) getAttendance(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	data, err := s.db.attendance(classID, date)
+	data, err := s.db.attendance(classID, date, trash, cursor, limit)
 	respond(w, data, err)
 }
 
@@ -349,6 +367,16 @@ func (s *server) closeAttendance(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) deleteAttendance(w http.ResponseWriter, r *http.Request) {
 	err := s.db.deleteAttendance(pathID(r, "id"))
+	respond(w, map[string]bool{"ok": err == nil}, err)
+}
+
+func (s *server) restoreAttendance(w http.ResponseWriter, r *http.Request) {
+	err := s.db.restoreAttendance(pathID(r, "id"))
+	respond(w, map[string]bool{"ok": err == nil}, err)
+}
+
+func (s *server) purgeAttendance(w http.ResponseWriter, r *http.Request) {
+	err := s.db.purgeAttendance(pathID(r, "id"))
 	respond(w, map[string]bool{"ok": err == nil}, err)
 }
 
@@ -587,7 +615,7 @@ type integrationStudent struct {
 // TypeMatch. It deliberately uses a separate bearer token instead of the
 // browser session cookie used by the teacher UI.
 func (s *server) getIntegrationClasses(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
 	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authorization == "" {
 		writeJSON(w, http.StatusUnauthorized, apiError{Error: "缺少 Authorization 凭证"})
@@ -639,7 +667,22 @@ func (s *server) getIntegrationClasses(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, integrationClassesResponse{Classes: classes})
+	payload := integrationClassesResponse{Classes: classes}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	digest := sha256.Sum256(body)
+	etag := `"` + hex.EncodeToString(digest[:]) + `"`
+	w.Header().Set("ETag", etag)
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(append(body, '\n'))
 }
 
 func parseBearerToken(value string) (string, bool) {

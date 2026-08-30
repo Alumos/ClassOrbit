@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
-  ArrowLeft, ArrowLeftRight, CalendarClock, CalendarDays, ChevronDown, FileSpreadsheet,
+  ArrowLeft, ArrowLeftRight, CalendarClock, CalendarDays, ChevronDown, ClipboardCheck, FileSpreadsheet,
   MapPin, Pencil, Plus, Settings2, Trash2, UserRoundX, X,
 } from 'lucide-react'
 import { api, json } from './api'
 import { Dialog } from './dialog'
 import { Select, SelectItem } from './select'
 import { Button, Input } from './ui'
-import type { ClassItem, Notify, ScheduleChange, ScheduleData, ScheduleLesson, SchedulePeriod, ScheduleSettings } from './types'
+import type { AttendanceSuggestion, ClassItem, Notify, ScheduleChange, ScheduleData, ScheduleLesson, SchedulePeriod, ScheduleSettings } from './types'
 
 const weekdays = ['周一', '周二', '周三', '周四', '周五']
 const locations = ['机房 1', '机房 2', '教室']
@@ -40,7 +40,7 @@ const dateAt = (date: string, time = '12:00') => new Date(`${date}T${time}:00`)
 const weekdayOf = (date: Date) => ((date.getDay() + 6) % 7) + 1
 const shortDate = (date: string) => date ? date.replaceAll('-', '.') : ''
 
-function semesterWeek(settings: ScheduleSettings, date: string) {
+export function semesterWeek(settings: ScheduleSettings, date: string) {
   if (!settings.semesterStart || date < settings.semesterStart || date > settings.semesterEnd) return undefined
   return Math.floor((dateAt(date).getTime() - dateAt(settings.semesterStart).getTime()) / 604800000) + 1
 }
@@ -49,7 +49,7 @@ function lessonLocation(lesson: ScheduleLesson, week?: number) {
   return week && week % 2 === 0 ? lesson.locationEven : lesson.locationOdd
 }
 
-function buildOccurrences(data: ScheduleData, from: Date, days: number) {
+export function buildOccurrences(data: ScheduleData, from: Date, days: number) {
   const occurrences: Occurrence[] = []
   const changes = new Map(data.changes.map(change => [`${change.lessonId}-${change.date}`, change]))
   const lessons = new Map<number, ScheduleLesson[]>()
@@ -96,7 +96,7 @@ function relativeLabel(target: Date, now: Date) {
   return days === 1 ? '明天' : weekdays[weekdayOf(target) - 1] || target.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
 }
 
-export function ScheduleWidget({ classes, notify }: { classes: ClassItem[]; notify: Notify }) {
+export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes: ClassItem[]; notify: Notify; onStartAttendance: (suggestion: AttendanceSuggestion) => void }) {
   const [data, setData] = useState<ScheduleData>(emptyData)
   const [collapsed, setCollapsed] = useState(() => (localStorage.getItem('classorbit-schedule-collapsed') || localStorage.getItem('classpoint-schedule-collapsed')) !== 'false')
   const [manageOpen, setManageOpen] = useState(false)
@@ -109,6 +109,8 @@ export function ScheduleWidget({ classes, notify }: { classes: ClassItem[]; noti
   const [changeForm, setChangeForm] = useState({ newDate: '', newStartTime: '', newEndTime: '', newClassId: '', note: '' })
   const [busy, setBusy] = useState(false)
   const [now, setNow] = useState(() => new Date())
+  const [serverOffsetMs, setServerOffsetMs] = useState(0)
+  const [serverClockReady, setServerClockReady] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const refresh = async () => {
@@ -116,13 +118,20 @@ export function ScheduleWidget({ classes, notify }: { classes: ClassItem[]; noti
       const next = await api<ScheduleData>('/schedule')
       setData(next)
       setSettingsDraft(next.settings)
+      const clock = await api<AttendanceSuggestion>('/schedule/current')
+      const serverTime = new Date(clock.serverTime).getTime()
+      if (Number.isFinite(serverTime)) {
+        setServerOffsetMs(serverTime - Date.now())
+        setNow(new Date(serverTime))
+        setServerClockReady(true)
+      }
     } catch (error) { notify((error as Error).message, 'error') }
   }
   useEffect(() => { void refresh() }, [])
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 30000)
+    const timer = window.setInterval(() => setNow(new Date(Date.now() + serverOffsetMs)), 30000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [serverOffsetMs])
   useEffect(() => { localStorage.setItem('classorbit-schedule-collapsed', String(collapsed)) }, [collapsed])
 
   const today = dateKey(now)
@@ -208,6 +217,18 @@ export function ScheduleWidget({ classes, notify }: { classes: ClassItem[]; noti
     finally { setBusy(false); event.target.value = '' }
   }
 
+  const startAttendance = async () => {
+    try {
+      const detected = await api<AttendanceSuggestion>('/schedule/current')
+      if (!detected.detected) {
+        notify(detected.message, 'error')
+        return
+      }
+      onStartAttendance(detected)
+      setCollapsed(true)
+    } catch (error) { notify((error as Error).message, 'error') }
+  }
+
   const nextDateLabel = next ? (next.date === today ? '今天' : next.date === dateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)) ? '明天' : weekdays[weekdayOf(dateAt(next.date)) - 1] || next.date.slice(5)) : ''
   const editPeriod = data.settings.periods.find(item => item.period === editing?.period)
 
@@ -221,6 +242,7 @@ export function ScheduleWidget({ classes, notify }: { classes: ClassItem[]; noti
         {next ? <section className={`schedule-next ${current ? 'schedule-current' : ''}`}>
           <div className="schedule-next-label"><span>{current ? '正在上课' : '下节课'}</span><strong>{current ? `${next.endTime} 下课` : relativeLabel(dateAt(next.date, next.startTime), now)}</strong></div>
           <div className="schedule-next-main"><div><strong>{next.className}</strong><span>{next.lesson.course}{next.movedHere ? ' · 换课' : ''}</span><small><MapPin size={11} />{next.location}</small></div><time>{nextDateLabel}<b>{next.startTime}</b></time></div>
+          {current && serverClockReady && <Button className="schedule-attendance-button" size="sm" onClick={() => void startAttendance()}><ClipboardCheck size={14} />从当前课时发起签到</Button>}
         </section> : <button className="schedule-empty" onClick={openManager}><CalendarDays size={22} /><span><strong>{data.lessons.length ? '近期没有课程' : '录入本学期课表'}</strong><small>{data.settings.semesterEnd && today > data.settings.semesterEnd ? '本学期已经结束' : '设置校历后即可获得课程提醒'}</small></span></button>}
         <div className="schedule-today-title"><strong>今天</strong><span>{todayItems.length} 节课</span></div>
         <div className="schedule-timeline">

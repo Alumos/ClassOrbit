@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BarChart3, Clock3, Minus, Plus, Search, Shuffle, SlidersHorizontal, UserRound, Users } from 'lucide-react'
+import { BarChart3, Clock3, Minus, Plus, RotateCcw, Search, Shuffle, SlidersHorizontal, UserRound, Users } from 'lucide-react'
 import { api, json } from '../api'
 import { Dialog } from '../dialog'
 import { Select, SelectItem } from '../select'
@@ -35,6 +35,20 @@ export function PointsPage({ classes, classId, setClassId, activeClass, notify, 
       notify((error as Error).message, 'error')
     }
   }
+  const undoScore = async (event: ScoreEvent) => {
+    if (!adjusting || !event.reversible) return false
+    try {
+      const updated = await api<Student>(`/score-events/${event.id}/undo`, json('POST'))
+      setStudents(current => current.map(item => item.id === updated.id ? updated : item))
+      setAdjusting(updated)
+      onScoreChange(-event.delta)
+      notify('已撤销该笔积分变更')
+      return true
+    } catch (error) {
+      notify((error as Error).message, 'error')
+      return false
+    }
+  }
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
     return q ? students.filter(st => st.name.toLowerCase().includes(q) || st.studentNo.toLowerCase().includes(q)) : students
@@ -54,12 +68,12 @@ export function PointsPage({ classes, classId, setClassId, activeClass, notify, 
       <div className="student-card-head"><span className="student-avatar">{student.name.slice(-1)}</span><div><strong>{student.name}</strong><span>学号 {student.studentNo}</span></div><button className={`score-pill ${student.score < 0 ? 'negative' : student.score > 0 ? 'positive' : ''}`} onClick={() => setAdjusting(student)} aria-label={`调整${student.name}的积分`}>{student.score > 0 ? '+' : ''}{student.score}</button></div>
       <div className="quick-score"><Button variant="outline" onClick={() => void changeScore(student, -1)} aria-label={`${student.name}扣一分`}><Minus size={17} /><span>扣 1</span></Button><Button onClick={() => void changeScore(student, 1)} aria-label={`${student.name}加一分`}><Plus size={17} /><span>加 1</span></Button></div>
     </article>)}</div> : <section className="panel"><EmptyState icon={<Users size={22} />} title={classId ? '暂无匹配学生' : '先选择一个班级'} detail={classId ? (students.length ? '换一个关键词试试。' : '请在“班级与名单”中导入 Excel 学生名单。') : '创建班级并导入名单后即可开始积分。'} /></section>}
-    <AdjustDialog student={adjusting} onClose={() => setAdjusting(null)} onChange={async (delta, reason) => { if (adjusting) await changeScore(adjusting, delta, reason); setAdjusting(null) }} />
+    <AdjustDialog student={adjusting} onClose={() => setAdjusting(null)} onChange={async (delta, reason) => { if (adjusting) await changeScore(adjusting, delta, reason); setAdjusting(null) }} onUndo={undoScore} />
     <RandomPicker open={pickerOpen} onOpenChange={setPickerOpen} students={students} className={activeClass?.name || ''} onAdjust={(student, delta) => void changeScore(student, delta, '随机点名')} />
   </>
 }
 
-function AdjustDialog({ student, onClose, onChange }: { student: Student | null; onClose: () => void; onChange: (delta: number, reason: string) => Promise<void> }) {
+function AdjustDialog({ student, onClose, onChange, onUndo }: { student: Student | null; onClose: () => void; onChange: (delta: number, reason: string) => Promise<void>; onUndo: (event: ScoreEvent) => Promise<boolean> }) {
   const [amount, setAmount] = useState('1')
   const [direction, setDirection] = useState<'add' | 'minus'>('add')
   const [reason, setReason] = useState('')
@@ -68,7 +82,7 @@ function AdjustDialog({ student, onClose, onChange }: { student: Student | null;
   const submit = () => { const value = Math.max(1, Math.min(100, Number(amount) || 1)); void onChange(direction === 'add' ? value : -value, reason) }
   return <Dialog open={!!student} onOpenChange={open => !open && onClose()} title={student ? `调整 ${student.name} 的积分` : '调整积分'} description={student ? `当前积分 ${student.score} · 学号 ${student.studentNo}` : ''} width="wide" footer={<><Button variant="outline" onClick={onClose}>取消</Button><Button onClick={submit}>确认调整</Button></>}>
     <div className="adjust-layout"><div className="form-stack"><div className="field"><label>变更方向</label><div className="segment segment-full"><button className={direction === 'add' ? 'active' : ''} onClick={() => setDirection('add')}><Plus size={14} />加分</button><button className={direction === 'minus' ? 'active danger-active' : ''} onClick={() => setDirection('minus')}><Minus size={14} />扣分</button></div></div><div className="field"><label htmlFor="score-amount">分值</label><Input id="score-amount" type="number" min="1" max="100" value={amount} onChange={e => setAmount(e.target.value)} /></div><div className="field"><label htmlFor="score-reason">原因</label><Input id="score-reason" value={reason} onChange={e => setReason(e.target.value)} placeholder={direction === 'add' ? '如：积极回答问题' : '如：课堂纪律'} /></div></div>
-      <div className="history-list"><div className="history-title"><Clock3 size={15} /><strong>最近流水</strong></div>{events.length ? events.slice(0, 6).map(event => <div className="history-item" key={event.id}><span className={event.delta > 0 ? 'delta-add' : 'delta-minus'}>{event.delta > 0 ? '+' : ''}{event.delta}</span><div><strong>{event.reason}</strong><small>{formatTime(event.createdAt)}</small></div></div>) : <p className="muted">暂无积分流水</p>}</div></div>
+      <div className="history-list"><div className="history-title"><Clock3 size={15} /><strong>最近流水</strong></div>{events.length ? events.slice(0, 6).map(event => <div className="history-item" key={event.id}><span className={event.delta > 0 ? 'delta-add' : 'delta-minus'}>{event.delta > 0 ? '+' : ''}{event.delta}</span><div><strong>{event.reason}</strong><small>{formatTime(event.createdAt)}{event.reversedAt ? ' · 已撤销' : ''}</small></div>{event.reversible && <Button variant="ghost" size="icon" title="撤销这笔积分" onClick={async () => { if (await onUndo(event)) setEvents(current => current.map(item => item.id === event.id ? { ...item, reversible: false, reversedAt: new Date().toISOString() } : item)) }}><RotateCcw size={13} /></Button>}</div>) : <p className="muted">暂无积分流水</p>}</div></div>
   </Dialog>
 }
 

@@ -11,7 +11,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(base + path, { ...init, headers })
   const body = await response.json().catch(() => null)
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== 'undefined' && path !== '/auth') window.dispatchEvent(new CustomEvent('classorbit:unauthorized'))
+    if (response.status === 401 && typeof window !== 'undefined' && path !== '/auth' && path !== '/auth/password') window.dispatchEvent(new CustomEvent('classorbit:unauthorized'))
     throw new ApiError(body?.error || '请求失败，请稍后重试', response.status)
   }
   return body as T

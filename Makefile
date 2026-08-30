@@ -8,6 +8,7 @@ dev:
 	PUBLIC_DIR=frontend/dist go run ./backend
 
 test:
+	cd frontend && npm test
 	cd frontend && npm run build
 	go test ./backend
 

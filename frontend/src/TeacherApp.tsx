@@ -6,7 +6,7 @@ import {
 import { api } from './api'
 import { Select, SelectItem } from './select'
 import { Button, SiteFooter } from './ui'
-import type { ClassItem, Dashboard, Notify, SiteSettings } from './types'
+import type { AttendanceSuggestion, ClassItem, Dashboard, Notify, SiteSettings } from './types'
 
 const PointsPage = lazy(() => import('./pages/PointsPage').then(({ PointsPage }) => ({ default: PointsPage })))
 const OverviewPage = lazy(() => import('./pages/OverviewPage').then(({ OverviewPage }) => ({ default: OverviewPage })))
@@ -32,6 +32,7 @@ export function TeacherApp({ username, settings, onSettingsChange, onLogout }: {
   const [classId, setClassId] = useState(() => Number(localStorage.getItem('classorbit-class') || localStorage.getItem('classpoint-class')) || 0)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [navigationDirty, setNavigationDirty] = useState(false)
+  const [attendanceSuggestion, setAttendanceSuggestion] = useState<AttendanceSuggestion | null>(null)
   const [toast, setToast] = useState<{ id: number; message: string; kind: 'success' | 'error' } | null>(null)
 
   const notify: Notify = useCallback((message, kind = 'success') => setToast({ id: Date.now(), message, kind }), [])
@@ -82,13 +83,17 @@ export function TeacherApp({ username, settings, onSettingsChange, onLogout }: {
         {page === 'points' && <PointsPage classes={classes} classId={classId} setClassId={setClassId} activeClass={activeClass} notify={notify} onScoreChange={updateClassScore} />}
         {page === 'overview' && <OverviewPage classes={classes} dashboard={dashboard} onNavigate={switchPage} />}
         {page === 'classes' && <ClassesPage classes={classes} notify={notify} onDataChange={refresh} onSelectClass={id => { setClassId(id); setPage('points') }} />}
-        {page === 'attendance' && <AttendancePage classes={classes} classId={classId} setClassId={setClassId} notify={notify} onDataChange={refresh} />}
+        {page === 'attendance' && <AttendancePage classes={classes} classId={classId} setClassId={setClassId} notify={notify} onDataChange={refresh} initialSuggestion={attendanceSuggestion} onSuggestionConsumed={() => setAttendanceSuggestion(null)} />}
         {page === 'navigation' && <NavigationSettingsPage notify={notify} onDirtyChange={setNavigationDirty} />}
-        {page === 'settings' && <SettingsPage settings={settings} onChange={onSettingsChange} notify={notify} />}
+        {page === 'settings' && <SettingsPage settings={settings} classes={classes} onChange={onSettingsChange} notify={notify} />}
       </Suspense></div>
       <SiteFooter />
     </main>
-    <Suspense fallback={null}><ScheduleWidget classes={classes} notify={notify} /></Suspense>
+    <Suspense fallback={null}><ScheduleWidget classes={classes} notify={notify} onStartAttendance={detected => {
+      setClassId(detected.classId)
+      setAttendanceSuggestion(detected)
+      setPage('attendance')
+    }} /></Suspense>
     {toast && <div key={toast.id} className={`toast toast-${toast.kind}`} role="status">{toast.kind === 'success' ? <CheckCircle2 size={16} /> : <X size={16} />}<span>{toast.message}</span></div>}
   </div>
 }

@@ -320,6 +320,29 @@ td strong { color: #27272a; font-weight: 550; }
 .brand-preview > div > div { min-width: 0; display: flex; flex-direction: column; }
 .brand-preview strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.brand-preview small { margin-top: 2px; color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.heading-actions { display: flex; align-items: center; gap: 8px; }
+.load-more { padding: 14px 0 2px; display: flex; justify-content: center; }
+.confirm-check { padding: 12px; border: 1px solid var(--border); border-radius: 7px; background: #fafafa; display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.confirm-check input { width: 16px; height: 16px; margin-top: 2px; accent-color: #18181b; }
+.confirm-check > span { display: flex; flex-direction: column; gap: 2px; }.confirm-check strong { font-size: 12px; }.confirm-check small { color: var(--muted); font-size: 11px; line-height: 17px; }
+
+.settings-grid { max-width: 1100px; margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.admin-card { max-width: 1100px; margin-top: 12px; }
+.admin-card-body { padding: 18px; }
+.admin-card-body > .button { align-self: flex-start; }
+.admin-action-row { min-height: 70px; padding: 13px 0; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; }
+.admin-action-row:last-child { border-bottom: 0; }.admin-action-row > div { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.admin-action-row strong { font-size: 13px; }.admin-action-row span { color: var(--muted); font-size: 11px; line-height: 17px; }
+.hidden-file { display: none; }
+.report-controls { padding: 16px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.report-controls .input { width: 155px; }
+.audit-list { padding: 4px 16px 12px; }
+.audit-item { min-height: 62px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 30px minmax(0,1fr) auto; align-items: center; gap: 10px; }
+.audit-item:last-child { border-bottom: 0; }.audit-item > span { width: 30px; height: 30px; border-radius: 6px; background: #f4f4f5; color: #71717a; display: grid; place-items: center; }
+.audit-item > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }.audit-item strong { font-size: 12px; }.audit-item small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.audit-item time { color: var(--muted); font-size: 10px; }
+.schedule-attendance-button { width: 100%; margin-top: 10px; }
+
 .checkin-page { min-height: 100vh; background: #f4f4f5; display: flex; flex-direction: column; }
 .checkin-header { height: 70px; padding: 0 max(20px, calc((100vw - 960px) / 2)); background: #fff; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
 .checkin-brand { display: flex; align-items: center; gap: 10px; }
@@ -494,6 +517,10 @@ td { height: 54px; padding: 7px 14px; }
   .schedule-config-dates { grid-template-columns: 1fr 1fr; }.schedule-config-dates > div:first-child { grid-column: 1 / -1; }
   .schedule-period-settings { grid-template-columns: 1fr; }.schedule-period-settings > div:first-child { grid-row: auto; margin-bottom: 3px; }
   .schedule-form-actions { flex-wrap: wrap; }.schedule-form-actions > span { display: none; }.schedule-form-actions .button { flex: 1; }.schedule-form-actions .button-danger { flex-basis: 100%; }
+  .heading-actions { flex-wrap: wrap; justify-content: flex-end; }.heading-actions .button { flex: 1; }
+  .settings-grid { grid-template-columns: 1fr; }.report-controls { align-items: stretch; flex-direction: column; }.report-controls .select-trigger, .report-controls .input, .report-controls .button { width: 100%; }
+  .admin-action-row { align-items: flex-start; flex-direction: column; }.admin-action-row .button { width: 100%; }
+  .audit-item { grid-template-columns: 30px minmax(0,1fr); }.audit-item time { grid-column: 2; }
 }
 
 @media (prefers-reduced-motion: reduce) {

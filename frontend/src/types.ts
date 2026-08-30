@@ -18,7 +18,15 @@ export type Student = {
   createdAt: string
 }
 
-export type ScoreEvent = { id: number; delta: number; reason: string; createdAt: string }
+export type ScoreEvent = {
+  id: number
+  delta: number
+  reason: string
+  reversalOf: number | null
+  reversedAt: string | null
+  reversible: boolean
+  createdAt: string
+}
 
 export type AttendanceRecord = {
   studentId: number
@@ -39,9 +47,26 @@ export type Attendance = {
   startedAt: string
   sessionAt: string
   endedAt: string | null
+  deletedAt: string | null
   presentCount: number
   absentCount: number
   records: AttendanceRecord[]
+}
+
+export type AttendancePageData = { items: Attendance[]; nextCursor: number }
+
+export type AttendanceSuggestion = {
+  detected: boolean
+  serverTime: string
+  classId: number
+  className: string
+  course: string
+  sessionAt: string
+  period: number
+  startTime: string
+  endTime: string
+  source: 'regular' | 'rescheduled' | ''
+  message: string
 }
 
 export type Dashboard = { classCount: number; studentCount: number; totalScore: number; activeSessions: number }
@@ -49,6 +74,16 @@ export type Dashboard = { classCount: number; studentCount: number; totalScore: 
 export type SiteSettings = { title: string; subtitle: string }
 export type NavigationItem = { id: number; title: string; url: string; iconUrl: string | null; sortOrder: number }
 export type Notify = (message: string, kind?: 'success' | 'error') => void
+export type AuditLog = {
+  id: number
+  action: string
+  entityType: string
+  entityId: number | null
+  summary: string
+  details: string
+  actor: string
+  createdAt: string
+}
 
 export type ScheduleLesson = {
   id: number

@@ -16,6 +16,9 @@ ClassOrbit（智创课堂）是面向小学信息科技教师的轻量班级积�
 - 教师后台可维护学习网站标题、链接、在线图标及显示顺序
 - 教师考勤台实时查看已到和缺席，支持迟到、请假等手动修正
 - 考勤场次支持便捷删除，删除进行中场次会立即停止该班签到
+- 删除考勤进入回收站，可恢复或二次确认后永久删除
+- 考勤保存班级、学号和姓名快照，修改或删除名单不会污染历史
+- 按服务器时间、课表和临时换课自动识别当前课时，教师确认后发起签到
 - 考勤场次支持课程、上课日期时间以及班级/日期组合筛选
 - 场次名称统一按“班级名 · 日期 时间”自动生成
 - 后台自定义站点主标题和副标题
@@ -24,6 +27,9 @@ ClassOrbit（智创课堂）是面向小学信息科技教师的轻量班级积�
 - 周一至周五、每日 7 节的网格课表，支持编辑节次时间和单双周上课地点
 - 常规课表支持点击格子编辑、Excel 批量导入，以及带备注的换课或被占课标记
 - 首次部署创建教师账号密码，教师 API 与公开学生 API 隔离
+- 支持修改密码并注销其他会话、操作审计和登录/签到/名单接口限流
+- 支持一致性数据库下载/恢复、每日自动备份及 Excel 名单/积分/考勤报表
+- 积分流水支持可审计撤销，不直接删除原始记录
 - 桌面和手机响应式界面，动效尊重 `prefers-reduced-motion`
 
 ## 项目结构
@@ -49,8 +55,8 @@ Go 后端原先位于项目根目录的 `main.go` 和 `store.go`，并非缺少�
 
 仓库建议命名为 `classorbit`。工作流 [`.github/workflows/publish-container.yml`](.github/workflows/publish-container.yml) 会执行以下流程：
 
-1. 使用 Node.js 22 安装依赖并构建 React 前端。
-2. 使用 `go.mod` 指定的 Go 版本运行后端测试。
+1. 使用 Node.js 22 安装依赖，运行 Vitest/React Testing Library 测试并构建 React 前端。
+2. 使用 `go.mod` 指定的 Go 版本运行后端与 API 测试。
 3. 构建 `linux/amd64` 和 `linux/arm64` 多架构镜像。
 4. 发布到 `ghcr.io/<GitHub 用户名或组织>/classorbit`。
 5. 为镜像附加 SBOM、构建来源以及版本标签。
@@ -84,6 +90,9 @@ TEACHER_USERNAME=teacher
 TEACHER_PASSWORD=请设置强密码
 CLASS_SYSTEM_TOKEN=请设置一个随机共享密钥
 TZ=Asia/Shanghai
+AUTO_BACKUP_ENABLED=true
+BACKUP_RETENTION_DAYS=14
+TRUST_PROXY_HEADERS=false
 ```
 
 更新镜像：
@@ -100,7 +109,7 @@ docker compose -f compose.deploy.yaml ps
 docker compose -f compose.deploy.yaml logs -f classorbit
 ```
 
-默认通过服务器 `8080` 端口访问。公网部署必须在前面配置 Caddy、Nginx 或其他 HTTPS 反向代理，不要直接通过明文 HTTP 登录教师后台。
+默认通过服务器 `8080` 端口访问。公网部署必须在前面配置 Caddy、Nginx 或其他 HTTPS 反向代理，不要直接通过明文 HTTP 登录教师后台。只有反向代理会覆盖客户端来源地址时才设置 `TRUST_PROXY_HEADERS=true`。
 
 ## 从源码构建部署
 
@@ -134,6 +143,9 @@ TEACHER_PASSWORD=请设置强密码
 # 与 TypeMatch 中 CLASS_SYSTEM_TOKEN 保持一致的随机共享密钥
 CLASS_SYSTEM_TOKEN=请设置一个随机共享密钥
 TZ=Asia/Shanghai
+AUTO_BACKUP_ENABLED=true
+BACKUP_RETENTION_DAYS=14
+TRUST_PROXY_HEADERS=false
 ```
 
 此时访问 `http://VPS_IP:9000`，学生签到地址为 `http://VPS_IP:9000/checkin`。也可以不创建 `.env`，临时指定端口：
@@ -144,7 +156,7 @@ APP_PORT=9000 ALPINE_MIRROR=https://mirrors.aliyun.com/alpine TEACHER_USERNAME=t
 
 ### TypeMatch 班级名单同步
 
-系统提供只读接口 `GET /api/integration/classes`，供 TypeMatch 获取教师管理的班级和学生名单。接口使用独立的共享 Bearer 密钥，不使用教师后台 Cookie，也不接收教师密码。请求中的 `teacher_username` 必须与本系统教师账号用户名一致；如果发送 `X-Teacher-Username`，它也必须与查询参数一致。部署时设置 `CLASS_SYSTEM_TOKEN`，并在 TypeMatch 中配置相同的 `CLASS_SYSTEM_TOKEN`。
+系统提供只读接口 `GET /api/integration/classes`，供 TypeMatch 获取教师管理的班级和学生名单。接口使用独立的共享 Bearer 密钥，不使用教师后台 Cookie，也不接收教师密码。请求中的 `teacher_username` 必须与本系统教师账号用户名一致；如果发送 `X-Teacher-Username`，它也必须与查询参数一致。部署时设置 `CLASS_SYSTEM_TOKEN`，并在 TypeMatch 中配置相同的 `CLASS_SYSTEM_TOKEN`。接口支持 ETag/`If-None-Match`，名单未变化时返回 `304`，适合定时同步。
 
 完整的请求参数、响应字段、错误码和接入注意事项见 [`docs/integration-classes-api.md`](docs/integration-classes-api.md)。
 
@@ -174,7 +186,7 @@ docker compose down
 
 如果从旧版 ClassPoint 升级，在 `.env` 中设置 `DATA_VOLUME_NAME=classpoint_data` 即可继续挂载原数据卷。程序也会自动识别数据卷内已有的 `classpoint.db`；新安装则使用 `classorbit.db`。
 
-SQLite 使用 WAL 模式。在线运行时不要只复制单个 `.db` 文件作为备份；应先停止容器后复制整个 `/app/data` 目录，或者使用 SQLite 的一致性备份工具。
+SQLite 使用 WAL 模式。后台“系统设置”可以在线下载、校验和恢复一致性备份；程序默认每天在数据卷的 `backups/` 下保存一份备份并保留 14 天，恢复前还会额外保存安全副本。不要在容器运行时直接复制单个数据库主文件。
 
 ## 本地运行
 
@@ -223,5 +235,7 @@ PUBLIC_DIR=frontend/dist ADDR=0.0.0.0:8080 go run ./backend
 ```bash
 make test
 ```
+
+`make test` 会执行前端生产构建、Vitest/React Testing Library 测试以及 Go 后端/API 测试。
 
 更完整的性能、安全和功能改进建议见 [`docs/improvement-roadmap.md`](docs/improvement-roadmap.md)。

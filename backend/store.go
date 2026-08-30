@@ -14,7 +14,10 @@ var (
 	errConflict = errors.New("conflict")
 )
 
-type store struct{ *sql.DB }
+type store struct {
+	*sql.DB
+	path string
+}
 
 type classInput struct {
 	Name    string `json:"name"`
@@ -104,10 +107,13 @@ type studentRow struct {
 	CreatedAt string `json:"createdAt"`
 }
 type scoreEvent struct {
-	ID        int64  `json:"id"`
-	Delta     int    `json:"delta"`
-	Reason    string `json:"reason"`
-	CreatedAt string `json:"createdAt"`
+	ID         int64   `json:"id"`
+	Delta      int     `json:"delta"`
+	Reason     string  `json:"reason"`
+	ReversalOf *int64  `json:"reversalOf"`
+	ReversedAt *string `json:"reversedAt"`
+	Reversible bool    `json:"reversible"`
+	CreatedAt  string  `json:"createdAt"`
 }
 type attendanceRecord struct {
 	StudentID int64   `json:"studentId"`
@@ -127,9 +133,15 @@ type attendanceView struct {
 	StartedAt    string             `json:"startedAt"`
 	SessionAt    string             `json:"sessionAt"`
 	EndedAt      *string            `json:"endedAt"`
+	DeletedAt    *string            `json:"deletedAt"`
 	PresentCount int                `json:"presentCount"`
 	AbsentCount  int                `json:"absentCount"`
 	Records      []attendanceRecord `json:"records"`
+}
+
+type attendancePage struct {
+	Items      []attendanceView `json:"items"`
+	NextCursor int64            `json:"nextCursor"`
 }
 
 type scheduleLesson struct {
@@ -182,7 +194,7 @@ func openStore(path string) (*store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
-	s := &store{db}
+	s := &store{DB: db, path: path}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, err
@@ -342,7 +354,10 @@ UPDATE schedule_lessons SET period=COALESCE((SELECT period FROM period_matches W
 	if err != nil {
 		return err
 	}
-	return s.resolveSchedulePeriodCollisions()
+	if err := s.resolveSchedulePeriodCollisions(); err != nil {
+		return err
+	}
+	return s.applyVersionedMigrations()
 }
 
 func (s *store) resolveSchedulePeriodCollisions() error {
@@ -450,16 +465,24 @@ func (s *store) ensureColumn(table, column, ddl string) error {
 
 func (s *store) dashboard() (map[string]any, error) {
 	var classes, students, score, active int
-	err := s.QueryRow(`SELECT (SELECT COUNT(*) FROM classes), (SELECT COUNT(*) FROM students), COALESCE((SELECT SUM(score) FROM students),0), (SELECT COUNT(*) FROM attendance_sessions WHERE status='active')`).Scan(&classes, &students, &score, &active)
+	err := s.QueryRow(`SELECT
+(SELECT COUNT(*) FROM classes WHERE deleted_at IS NULL),
+(SELECT COUNT(*) FROM students WHERE deleted_at IS NULL),
+COALESCE((SELECT SUM(score) FROM students WHERE deleted_at IS NULL),0),
+(SELECT COUNT(*) FROM attendance_sessions WHERE status='active' AND deleted_at IS NULL)`).Scan(&classes, &students, &score, &active)
 	return map[string]any{"classCount": classes, "studentCount": students, "totalScore": score, "activeSessions": active}, err
 }
 
 func (s *store) classes(publicOnly bool) ([]classRow, error) {
-	where := ""
+	where := " WHERE c.deleted_at IS NULL"
 	if publicOnly {
-		where = " WHERE EXISTS (SELECT 1 FROM attendance_sessions a2 WHERE a2.class_id=c.id AND a2.status='active')"
+		where += " AND EXISTS (SELECT 1 FROM attendance_sessions a2 WHERE a2.class_id=c.id AND a2.status='active' AND a2.deleted_at IS NULL)"
 	}
-	rows, err := s.Query(`SELECT c.id,c.name,c.grade,c.class_no,c.created_at,(SELECT COUNT(*) FROM students st WHERE st.class_id=c.id),(SELECT COALESCE(SUM(score),0) FROM students st WHERE st.class_id=c.id),(SELECT id FROM attendance_sessions a WHERE a.class_id=c.id AND a.status='active' LIMIT 1) FROM classes c` + where + ` ORDER BY c.id`)
+	rows, err := s.Query(`SELECT c.id,c.name,c.grade,c.class_no,c.created_at,
+(SELECT COUNT(*) FROM students st WHERE st.class_id=c.id AND st.deleted_at IS NULL),
+(SELECT COALESCE(SUM(score),0) FROM students st WHERE st.class_id=c.id AND st.deleted_at IS NULL),
+(SELECT id FROM attendance_sessions a WHERE a.class_id=c.id AND a.status='active' AND a.deleted_at IS NULL LIMIT 1)
+FROM classes c` + where + ` ORDER BY c.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -476,18 +499,43 @@ func (s *store) classes(publicOnly bool) ([]classRow, error) {
 }
 
 func (s *store) createClass(in classInput) (classRow, error) {
-	res, err := s.Exec(`INSERT INTO classes(name,grade,class_no) VALUES(?,?,?)`, className(in.Grade, in.ClassNo), strings.TrimSpace(in.Grade), strings.TrimSpace(in.ClassNo))
+	name := className(in.Grade, in.ClassNo)
+	tx, err := s.Begin()
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") {
-			return classRow{}, fmt.Errorf("%w: 班级名称已存在", errConflict)
-		}
 		return classRow{}, err
 	}
-	id, _ := res.LastInsertId()
+	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE classes SET grade=?,class_no=?,deleted_at=NULL
+WHERE name=? AND deleted_at IS NOT NULL`, strings.TrimSpace(in.Grade), strings.TrimSpace(in.ClassNo), name)
+	if err != nil {
+		return classRow{}, err
+	}
+	changed, _ := res.RowsAffected()
+	var id int64
+	if changed == 1 {
+		if err := tx.QueryRow(`SELECT id FROM classes WHERE name=?`, name).Scan(&id); err != nil {
+			return classRow{}, err
+		}
+	} else {
+		res, err = tx.Exec(`INSERT INTO classes(name,grade,class_no) VALUES(?,?,?)`, name, strings.TrimSpace(in.Grade), strings.TrimSpace(in.ClassNo))
+		if err != nil {
+			if strings.Contains(err.Error(), "UNIQUE") {
+				return classRow{}, fmt.Errorf("%w: 班级名称已存在", errConflict)
+			}
+			return classRow{}, err
+		}
+		id, _ = res.LastInsertId()
+	}
+	if err := addAudit(tx, "class.create", "class", id, "创建班级 "+name, ""); err != nil {
+		return classRow{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return classRow{}, err
+	}
 	return s.classByID(id)
 }
 func (s *store) updateClass(id int64, in classInput) (classRow, error) {
-	res, err := s.Exec(`UPDATE classes SET name=?,grade=?,class_no=? WHERE id=?`, className(in.Grade, in.ClassNo), strings.TrimSpace(in.Grade), strings.TrimSpace(in.ClassNo), id)
+	res, err := s.Exec(`UPDATE classes SET name=?,grade=?,class_no=? WHERE id=? AND deleted_at IS NULL`, className(in.Grade, in.ClassNo), strings.TrimSpace(in.Grade), strings.TrimSpace(in.ClassNo), id)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return classRow{}, fmt.Errorf("%w: 班级已存在", errConflict)
@@ -502,7 +550,11 @@ func (s *store) updateClass(id int64, in classInput) (classRow, error) {
 }
 func (s *store) classByID(id int64) (classRow, error) {
 	var c classRow
-	err := s.QueryRow(`SELECT c.id,c.name,c.grade,c.class_no,c.created_at,(SELECT COUNT(*) FROM students st WHERE st.class_id=c.id),(SELECT COALESCE(SUM(score),0) FROM students st WHERE st.class_id=c.id),(SELECT id FROM attendance_sessions a WHERE a.class_id=c.id AND a.status='active' LIMIT 1) FROM classes c WHERE c.id=?`, id).Scan(&c.ID, &c.Name, &c.Grade, &c.ClassNo, &c.CreatedAt, &c.StudentCount, &c.TotalScore, &c.ActiveSessionID)
+	err := s.QueryRow(`SELECT c.id,c.name,c.grade,c.class_no,c.created_at,
+(SELECT COUNT(*) FROM students st WHERE st.class_id=c.id AND st.deleted_at IS NULL),
+(SELECT COALESCE(SUM(score),0) FROM students st WHERE st.class_id=c.id AND st.deleted_at IS NULL),
+(SELECT id FROM attendance_sessions a WHERE a.class_id=c.id AND a.status='active' AND a.deleted_at IS NULL LIMIT 1)
+FROM classes c WHERE c.id=? AND c.deleted_at IS NULL`, id).Scan(&c.ID, &c.Name, &c.Grade, &c.ClassNo, &c.CreatedAt, &c.StudentCount, &c.TotalScore, &c.ActiveSessionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = errNotFound
 	}
@@ -513,7 +565,18 @@ func className(grade, classNo string) string {
 	return strings.TrimSpace(grade) + " " + strings.TrimSpace(classNo) + " 班"
 }
 func (s *store) deleteClass(id int64) error {
-	res, err := s.Exec(`DELETE FROM classes WHERE id=?`, id)
+	tx, err := s.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var name string
+	if err := tx.QueryRow(`SELECT name FROM classes WHERE id=? AND deleted_at IS NULL`, id).Scan(&name); errors.Is(err, sql.ErrNoRows) {
+		return errNotFound
+	} else if err != nil {
+		return err
+	}
+	res, err := tx.Exec(`UPDATE classes SET deleted_at=datetime('now','localtime') WHERE id=? AND deleted_at IS NULL`, id)
 	if err != nil {
 		return err
 	}
@@ -521,7 +584,17 @@ func (s *store) deleteClass(id int64) error {
 	if n == 0 {
 		return errNotFound
 	}
-	return nil
+	if _, err := tx.Exec(`UPDATE students SET deleted_at=datetime('now','localtime') WHERE class_id=? AND deleted_at IS NULL`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE attendance_sessions SET status='closed',
+ended_at=COALESCE(ended_at,datetime('now','localtime')) WHERE class_id=? AND status='active' AND deleted_at IS NULL`, id); err != nil {
+		return err
+	}
+	if err := addAudit(tx, "class.delete", "class", id, "删除班级 "+name, "班级和当前名单已软删除，历史记录保留"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *store) students(classID int64, sortKey string) ([]studentRow, error) {
@@ -531,7 +604,7 @@ func (s *store) students(classID int64, sortKey string) ([]studentRow, error) {
 	} else if sortKey == "score_desc" {
 		order = `score DESC, CAST(student_no AS INTEGER), student_no`
 	}
-	rows, err := s.Query(`SELECT id,class_id,student_no,name,score,created_at FROM students WHERE class_id=? ORDER BY `+order, classID)
+	rows, err := s.Query(`SELECT id,class_id,student_no,name,score,created_at FROM students WHERE class_id=? AND deleted_at IS NULL ORDER BY `+order, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -550,7 +623,8 @@ func (s *store) students(classID int64, sortKey string) ([]studentRow, error) {
 func (s *store) integrationClasses() ([]integrationClass, error) {
 	rows, err := s.Query(`SELECT c.id,c.name,st.student_no,st.id,st.name
 FROM classes c
-LEFT JOIN students st ON st.class_id=c.id
+LEFT JOIN students st ON st.class_id=c.id AND st.deleted_at IS NULL
+WHERE c.deleted_at IS NULL
 ORDER BY c.id,CAST(st.student_no AS INTEGER),st.student_no,st.id`)
 	if err != nil {
 		return nil, err
@@ -582,26 +656,59 @@ ORDER BY c.id,CAST(st.student_no AS INTEGER),st.student_no,st.id`)
 	return out, rows.Err()
 }
 func (s *store) createStudent(classID int64, in studentInput) (studentRow, error) {
-	res, err := s.Exec(`INSERT INTO students(class_id,student_no,name) VALUES(?,?,?)`, classID, strings.TrimSpace(in.StudentNo), strings.TrimSpace(in.Name))
+	tx, err := s.Begin()
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE") {
-			return studentRow{}, fmt.Errorf("%w: 该班已有相同学号", errConflict)
-		}
 		return studentRow{}, err
 	}
-	id, _ := res.LastInsertId()
+	defer tx.Rollback()
+	var classExists bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM classes WHERE id=? AND deleted_at IS NULL)`, classID).Scan(&classExists); err != nil {
+		return studentRow{}, err
+	}
+	if !classExists {
+		return studentRow{}, errNotFound
+	}
+	studentNo, name := strings.TrimSpace(in.StudentNo), strings.TrimSpace(in.Name)
+	res, err := tx.Exec(`UPDATE students SET name=?,deleted_at=NULL
+WHERE class_id=? AND student_no=? AND deleted_at IS NOT NULL`, name, classID, studentNo)
+	if err != nil {
+		return studentRow{}, err
+	}
+	changed, _ := res.RowsAffected()
+	var id int64
+	if changed == 1 {
+		if err := tx.QueryRow(`SELECT id FROM students WHERE class_id=? AND student_no=?`, classID, studentNo).Scan(&id); err != nil {
+			return studentRow{}, err
+		}
+	} else {
+		res, err = tx.Exec(`INSERT INTO students(class_id,student_no,name) VALUES(?,?,?)`, classID, studentNo, name)
+		if err != nil {
+			if strings.Contains(err.Error(), "UNIQUE") {
+				return studentRow{}, fmt.Errorf("%w: 该班已有相同学号", errConflict)
+			}
+			return studentRow{}, err
+		}
+		id, _ = res.LastInsertId()
+	}
+	if err := addAudit(tx, "student.create", "student", id, "添加学生 "+name, "student_no="+studentNo); err != nil {
+		return studentRow{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return studentRow{}, err
+	}
 	return s.studentByID(id)
 }
 func (s *store) studentByID(id int64) (studentRow, error) {
 	var st studentRow
-	err := s.QueryRow(`SELECT id,class_id,student_no,name,score,created_at FROM students WHERE id=?`, id).Scan(&st.ID, &st.ClassID, &st.StudentNo, &st.Name, &st.Score, &st.CreatedAt)
+	err := s.QueryRow(`SELECT id,class_id,student_no,name,score,created_at
+FROM students WHERE id=? AND deleted_at IS NULL`, id).Scan(&st.ID, &st.ClassID, &st.StudentNo, &st.Name, &st.Score, &st.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = errNotFound
 	}
 	return st, err
 }
 func (s *store) updateStudent(id int64, in studentInput) (studentRow, error) {
-	res, err := s.Exec(`UPDATE students SET student_no=?,name=? WHERE id=?`, strings.TrimSpace(in.StudentNo), strings.TrimSpace(in.Name), id)
+	res, err := s.Exec(`UPDATE students SET student_no=?,name=? WHERE id=? AND deleted_at IS NULL`, strings.TrimSpace(in.StudentNo), strings.TrimSpace(in.Name), id)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return studentRow{}, fmt.Errorf("%w: 该班已有相同学号", errConflict)
@@ -615,7 +722,18 @@ func (s *store) updateStudent(id int64, in studentInput) (studentRow, error) {
 	return s.studentByID(id)
 }
 func (s *store) deleteStudent(id int64) error {
-	res, err := s.Exec(`DELETE FROM students WHERE id=?`, id)
+	tx, err := s.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var name, studentNo string
+	if err := tx.QueryRow(`SELECT name,student_no FROM students WHERE id=? AND deleted_at IS NULL`, id).Scan(&name, &studentNo); errors.Is(err, sql.ErrNoRows) {
+		return errNotFound
+	} else if err != nil {
+		return err
+	}
+	res, err := tx.Exec(`UPDATE students SET deleted_at=datetime('now','localtime') WHERE id=? AND deleted_at IS NULL`, id)
 	if err != nil {
 		return err
 	}
@@ -623,7 +741,10 @@ func (s *store) deleteStudent(id int64) error {
 	if n == 0 {
 		return errNotFound
 	}
-	return nil
+	if err := addAudit(tx, "student.delete", "student", id, "删除学生 "+name, "student_no="+studentNo+"；历史考勤快照保留"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func (s *store) importStudents(classID int64, students []studentInput) (map[string]int, error) {
 	tx, err := s.Begin()
@@ -631,23 +752,44 @@ func (s *store) importStudents(classID int64, students []studentInput) (map[stri
 		return nil, err
 	}
 	defer tx.Rollback()
-	added, skipped := 0, 0
+	var classExists bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM classes WHERE id=? AND deleted_at IS NULL)`, classID).Scan(&classExists); err != nil {
+		return nil, err
+	}
+	if !classExists {
+		return nil, errNotFound
+	}
+	added, restored, skipped := 0, 0, 0
 	for _, st := range students {
-		result, err := tx.Exec(`INSERT INTO students(class_id,student_no,name) VALUES(?,?,?) ON CONFLICT(class_id,student_no) DO NOTHING`, classID, st.StudentNo, st.Name)
+		var id int64
+		var deletedAt sql.NullString
+		err := tx.QueryRow(`SELECT id,deleted_at FROM students WHERE class_id=? AND student_no=?`, classID, st.StudentNo).Scan(&id, &deletedAt)
+		if errors.Is(err, sql.ErrNoRows) {
+			if _, err := tx.Exec(`INSERT INTO students(class_id,student_no,name) VALUES(?,?,?)`, classID, st.StudentNo, st.Name); err != nil {
+				return nil, err
+			}
+			added++
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
-		changed, _ := result.RowsAffected()
-		if changed == 1 {
-			added++
+		if deletedAt.Valid {
+			if _, err := tx.Exec(`UPDATE students SET name=?,deleted_at=NULL WHERE id=?`, st.Name, id); err != nil {
+				return nil, err
+			}
+			restored++
 		} else {
 			skipped++
 		}
 	}
+	if err := addAudit(tx, "student.import", "class", classID, "导入学生名单", fmt.Sprintf("added=%d, restored=%d, skipped=%d", added, restored, skipped)); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return map[string]int{"added": added, "skipped": skipped, "total": len(students)}, nil
+	return map[string]int{"added": added, "restored": restored, "skipped": skipped, "total": len(students)}, nil
 }
 
 func (s *store) changeScore(studentID int64, in scoreInput) (studentRow, error) {
@@ -664,7 +806,7 @@ func (s *store) changeScore(studentID int64, in scoreInput) (studentRow, error) 
 			reason = "课堂扣分"
 		}
 	}
-	res, err := tx.Exec(`UPDATE students SET score=score+? WHERE id=?`, in.Delta, studentID)
+	res, err := tx.Exec(`UPDATE students SET score=score+? WHERE id=? AND deleted_at IS NULL`, in.Delta, studentID)
 	if err != nil {
 		return studentRow{}, err
 	}
@@ -675,13 +817,18 @@ func (s *store) changeScore(studentID int64, in scoreInput) (studentRow, error) 
 	if _, err = tx.Exec(`INSERT INTO score_events(student_id,delta,reason) VALUES(?,?,?)`, studentID, in.Delta, reason); err != nil {
 		return studentRow{}, err
 	}
+	if err := addAudit(tx, "score.change", "student", studentID, "调整学生积分", fmt.Sprintf("delta=%d, reason=%s", in.Delta, reason)); err != nil {
+		return studentRow{}, err
+	}
 	if err = tx.Commit(); err != nil {
 		return studentRow{}, err
 	}
 	return s.studentByID(studentID)
 }
 func (s *store) scoreEvents(studentID int64) ([]scoreEvent, error) {
-	rows, err := s.Query(`SELECT id,delta,reason,created_at FROM score_events WHERE student_id=? ORDER BY id DESC LIMIT 50`, studentID)
+	rows, err := s.Query(`SELECT id,delta,reason,reversal_of,reversed_at,
+CASE WHEN reversal_of IS NULL AND reversed_at IS NULL THEN 1 ELSE 0 END,created_at
+FROM score_events WHERE student_id=? ORDER BY id DESC LIMIT 50`, studentID)
 	if err != nil {
 		return nil, err
 	}
@@ -689,7 +836,7 @@ func (s *store) scoreEvents(studentID int64) ([]scoreEvent, error) {
 	out := []scoreEvent{}
 	for rows.Next() {
 		var e scoreEvent
-		if err := rows.Scan(&e.ID, &e.Delta, &e.Reason, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.Delta, &e.Reason, &e.ReversalOf, &e.ReversedAt, &e.Reversible, &e.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -704,7 +851,8 @@ func (s *store) createAttendance(in attendanceInput) (attendanceView, error) {
 	}
 	defer tx.Rollback()
 	var active int64
-	err = tx.QueryRow(`SELECT id FROM attendance_sessions WHERE class_id=? AND status='active'`, in.ClassID).Scan(&active)
+	err = tx.QueryRow(`SELECT id FROM attendance_sessions
+WHERE class_id=? AND status='active' AND deleted_at IS NULL`, in.ClassID).Scan(&active)
 	if err == nil {
 		return attendanceView{}, fmt.Errorf("%w: 该班已有进行中的点名", errConflict)
 	}
@@ -713,7 +861,9 @@ func (s *store) createAttendance(in attendanceInput) (attendanceView, error) {
 	}
 	var studentCount int
 	var currentClassName string
-	if err = tx.QueryRow(`SELECT c.name,(SELECT COUNT(*) FROM students st WHERE st.class_id=c.id) FROM classes c WHERE c.id=?`, in.ClassID).Scan(&currentClassName, &studentCount); err != nil {
+	if err = tx.QueryRow(`SELECT c.name,
+(SELECT COUNT(*) FROM students st WHERE st.class_id=c.id AND st.deleted_at IS NULL)
+FROM classes c WHERE c.id=? AND c.deleted_at IS NULL`, in.ClassID).Scan(&currentClassName, &studentCount); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return attendanceView{}, errNotFound
 		}
@@ -735,12 +885,19 @@ func (s *store) createAttendance(in attendanceInput) (attendanceView, error) {
 		course = "信息课"
 	}
 	title := attendanceTitle(currentClassName, sessionTime)
-	res, err := tx.Exec(`INSERT INTO attendance_sessions(class_id,title,course,session_at) VALUES(?,?,?,?)`, in.ClassID, title, course, sessionTime.Format("2006-01-02 15:04:05"))
+	res, err := tx.Exec(`INSERT INTO attendance_sessions(class_id,title,course,session_at,class_name_snapshot)
+VALUES(?,?,?,?,?)`, in.ClassID, title, course, sessionTime.Format("2006-01-02 15:04:05"), currentClassName)
 	if err != nil {
 		return attendanceView{}, err
 	}
 	id, _ := res.LastInsertId()
-	if _, err = tx.Exec(`INSERT INTO attendance_records(session_id,student_id,status) SELECT ?,id,'absent' FROM students WHERE class_id=?`, id, in.ClassID); err != nil {
+	if _, err = tx.Exec(`INSERT INTO attendance_records(
+session_id,student_id,status,student_no_snapshot,student_name_snapshot)
+SELECT ?,id,'absent',student_no,name FROM students
+WHERE class_id=? AND deleted_at IS NULL`, id, in.ClassID); err != nil {
+		return attendanceView{}, err
+	}
+	if err := addAudit(tx, "attendance.create", "attendance", id, "发起课堂点名 "+title, "course="+course); err != nil {
 		return attendanceView{}, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -748,15 +905,20 @@ func (s *store) createAttendance(in attendanceInput) (attendanceView, error) {
 	}
 	return s.attendanceByID(id)
 }
-func (s *store) attendance(classID int64, date string) ([]attendanceView, error) {
-	query := `SELECT a.id,a.class_id,c.name,a.course,a.status,a.started_at,a.session_at,a.ended_at,
+func (s *store) attendance(classID int64, date string, trash bool, cursor int64, limit int) (attendancePage, error) {
+	if limit < 1 || limit > 100 {
+		limit = 30
+	}
+	query := `SELECT a.id,a.class_id,
+COALESCE(NULLIF(a.class_name_snapshot,''),c.name,'已删除班级'),
+a.course,a.status,a.started_at,a.session_at,a.ended_at,a.deleted_at,
 COALESCE(SUM(CASE WHEN r.status IN ('present','late') THEN 1 ELSE 0 END),0),
 COALESCE(SUM(CASE WHEN r.status='absent' THEN 1 ELSE 0 END),0)
 FROM attendance_sessions a
-JOIN classes c ON c.id=a.class_id
+LEFT JOIN classes c ON c.id=a.class_id
 LEFT JOIN attendance_records r ON r.session_id=a.id`
 	args := []any{}
-	conditions := []string{}
+	conditions := []string{`a.deleted_at IS ` + map[bool]string{true: "NOT NULL", false: "NULL"}[trash]}
 	if classID > 0 {
 		conditions = append(conditions, `a.class_id=?`)
 		args = append(args, classID)
@@ -765,65 +927,53 @@ LEFT JOIN attendance_records r ON r.session_id=a.id`
 		conditions = append(conditions, `a.session_at>=? AND a.session_at<date(?,'+1 day')`)
 		args = append(args, date, date)
 	}
-	if len(conditions) > 0 {
-		query += ` WHERE ` + strings.Join(conditions, ` AND `)
+	if cursor > 0 {
+		conditions = append(conditions, `a.id<?`)
+		args = append(args, cursor)
 	}
-	query += ` GROUP BY a.id ORDER BY CASE a.status WHEN 'active' THEN 0 ELSE 1 END,a.session_at DESC,a.id DESC LIMIT 100`
+	query += ` WHERE ` + strings.Join(conditions, ` AND `)
+	// Cursor pagination must use the same monotonic key as the ordering. An
+	// older active session sorted ahead of newer closed sessions would otherwise
+	// appear again after applying a.id < cursor on the next page.
+	query += ` GROUP BY a.id ORDER BY a.id DESC LIMIT ?`
+	args = append(args, limit+1)
 	rows, err := s.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return attendancePage{}, err
 	}
+	defer rows.Close()
 	out := []attendanceView{}
-	indexes := map[int64]int{}
 	for rows.Next() {
 		var v attendanceView
-		if err := rows.Scan(&v.ID, &v.ClassID, &v.ClassName, &v.Course, &v.Status, &v.StartedAt, &v.SessionAt, &v.EndedAt, &v.PresentCount, &v.AbsentCount); err != nil {
-			rows.Close()
-			return nil, err
+		if err := rows.Scan(&v.ID, &v.ClassID, &v.ClassName, &v.Course, &v.Status, &v.StartedAt, &v.SessionAt, &v.EndedAt, &v.DeletedAt, &v.PresentCount, &v.AbsentCount); err != nil {
+			return attendancePage{}, err
 		}
 		v.Title = attendanceTitleFromString(v.ClassName, v.SessionAt)
 		v.Records = []attendanceRecord{}
-		indexes[v.ID] = len(out)
 		out = append(out, v)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
+		return attendancePage{}, err
 	}
-	rows.Close()
-	if len(out) == 0 {
-		return out, nil
+	page := attendancePage{Items: out}
+	if len(out) > limit {
+		page.Items = out[:limit]
+		page.NextCursor = page.Items[len(page.Items)-1].ID
 	}
-
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(out)), ",")
-	recordArgs := make([]any, len(out))
-	for i := range out {
-		recordArgs[i] = out[i].ID
-	}
-	records, err := s.Query(`SELECT r.session_id,st.id,st.student_no,st.name,r.status,r.checked_at,r.method
-FROM attendance_records r
-JOIN students st ON st.id=r.student_id
-WHERE r.session_id IN (`+placeholders+`)
-ORDER BY r.session_id,CAST(st.student_no AS INTEGER),st.student_no`, recordArgs...)
-	if err != nil {
-		return nil, err
-	}
-	defer records.Close()
-	for records.Next() {
-		var sessionID int64
-		var record attendanceRecord
-		if err := records.Scan(&sessionID, &record.StudentID, &record.StudentNo, &record.Name, &record.Status, &record.CheckedAt, &record.Method); err != nil {
-			return nil, err
-		}
-		if index, ok := indexes[sessionID]; ok {
-			out[index].Records = append(out[index].Records, record)
-		}
-	}
-	return out, records.Err()
+	return page, nil
 }
 func (s *store) attendanceByID(id int64) (attendanceView, error) {
 	var v attendanceView
-	err := s.QueryRow(`SELECT a.id,a.class_id,c.name,a.title,a.course,a.status,a.started_at,a.session_at,a.ended_at,COALESCE(SUM(CASE WHEN r.status IN ('present','late') THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN r.status='absent' THEN 1 ELSE 0 END),0) FROM attendance_sessions a JOIN classes c ON c.id=a.class_id LEFT JOIN attendance_records r ON r.session_id=a.id WHERE a.id=? GROUP BY a.id`, id).Scan(&v.ID, &v.ClassID, &v.ClassName, &v.Title, &v.Course, &v.Status, &v.StartedAt, &v.SessionAt, &v.EndedAt, &v.PresentCount, &v.AbsentCount)
+	err := s.QueryRow(`SELECT a.id,a.class_id,
+COALESCE(NULLIF(a.class_name_snapshot,''),c.name,'已删除班级'),
+a.title,a.course,a.status,a.started_at,a.session_at,a.ended_at,a.deleted_at,
+COALESCE(SUM(CASE WHEN r.status IN ('present','late') THEN 1 ELSE 0 END),0),
+COALESCE(SUM(CASE WHEN r.status='absent' THEN 1 ELSE 0 END),0)
+FROM attendance_sessions a LEFT JOIN classes c ON c.id=a.class_id
+LEFT JOIN attendance_records r ON r.session_id=a.id
+WHERE a.id=? GROUP BY a.id`, id).Scan(
+		&v.ID, &v.ClassID, &v.ClassName, &v.Title, &v.Course, &v.Status,
+		&v.StartedAt, &v.SessionAt, &v.EndedAt, &v.DeletedAt, &v.PresentCount, &v.AbsentCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, errNotFound
 	}
@@ -831,7 +981,14 @@ func (s *store) attendanceByID(id int64) (attendanceView, error) {
 		return v, err
 	}
 	v.Title = attendanceTitleFromString(v.ClassName, v.SessionAt)
-	rows, err := s.Query(`SELECT st.id,st.student_no,st.name,r.status,r.checked_at,r.method FROM attendance_records r JOIN students st ON st.id=r.student_id WHERE r.session_id=? ORDER BY CAST(st.student_no AS INTEGER),st.student_no`, id)
+	rows, err := s.Query(`SELECT r.student_id,
+COALESCE(NULLIF(r.student_no_snapshot,''),st.student_no,''),
+COALESCE(NULLIF(r.student_name_snapshot,''),st.name,'已删除学生'),
+r.status,r.checked_at,r.method
+FROM attendance_records r LEFT JOIN students st ON st.id=r.student_id
+WHERE r.session_id=?
+ORDER BY CAST(COALESCE(NULLIF(r.student_no_snapshot,''),st.student_no,'') AS INTEGER),
+COALESCE(NULLIF(r.student_no_snapshot,''),st.student_no,'')`, id)
 	if err != nil {
 		return v, err
 	}
@@ -847,7 +1004,8 @@ func (s *store) attendanceByID(id int64) (attendanceView, error) {
 	return v, rows.Err()
 }
 func (s *store) closeAttendance(id int64) (attendanceView, error) {
-	res, err := s.Exec(`UPDATE attendance_sessions SET status='closed',ended_at=datetime('now','localtime') WHERE id=? AND status='active'`, id)
+	res, err := s.Exec(`UPDATE attendance_sessions SET status='closed',ended_at=datetime('now','localtime')
+WHERE id=? AND status='active' AND deleted_at IS NULL`, id)
 	if err != nil {
 		return attendanceView{}, err
 	}
@@ -858,7 +1016,20 @@ func (s *store) closeAttendance(id int64) (attendanceView, error) {
 	return s.attendanceByID(id)
 }
 func (s *store) deleteAttendance(id int64) error {
-	res, err := s.Exec(`DELETE FROM attendance_sessions WHERE id=?`, id)
+	tx, err := s.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var title string
+	if err := tx.QueryRow(`SELECT title FROM attendance_sessions WHERE id=? AND deleted_at IS NULL`, id).Scan(&title); errors.Is(err, sql.ErrNoRows) {
+		return errNotFound
+	} else if err != nil {
+		return err
+	}
+	res, err := tx.Exec(`UPDATE attendance_sessions SET deleted_at=datetime('now','localtime'),
+status='closed',ended_at=COALESCE(ended_at,datetime('now','localtime'))
+WHERE id=? AND deleted_at IS NULL`, id)
 	if err != nil {
 		return err
 	}
@@ -866,14 +1037,62 @@ func (s *store) deleteAttendance(id int64) error {
 	if changed == 0 {
 		return errNotFound
 	}
-	return nil
+	if err := addAudit(tx, "attendance.delete", "attendance", id, "删除考勤记录 "+title, "已移入回收站"); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *store) restoreAttendance(id int64) error {
+	tx, err := s.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var title string
+	if err := tx.QueryRow(`SELECT title FROM attendance_sessions WHERE id=? AND deleted_at IS NOT NULL`, id).Scan(&title); errors.Is(err, sql.ErrNoRows) {
+		return errNotFound
+	} else if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE attendance_sessions SET deleted_at=NULL WHERE id=?`, id); err != nil {
+		return err
+	}
+	if err := addAudit(tx, "attendance.restore", "attendance", id, "恢复考勤记录 "+title, ""); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *store) purgeAttendance(id int64) error {
+	tx, err := s.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var title string
+	if err := tx.QueryRow(`SELECT title FROM attendance_sessions WHERE id=? AND deleted_at IS NOT NULL`, id).Scan(&title); errors.Is(err, sql.ErrNoRows) {
+		return errNotFound
+	} else if err != nil {
+		return err
+	}
+	if err := addAudit(tx, "attendance.purge", "attendance", id, "永久删除考勤记录 "+title, "明细已永久清除"); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM attendance_sessions WHERE id=? AND deleted_at IS NOT NULL`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func (s *store) updateAttendanceRecord(sessionID, studentID int64, status, method string) (attendanceView, error) {
 	checked := any(nil)
 	if status != "absent" {
 		checked = time.Now().Format("2006-01-02 15:04:05")
 	}
-	res, err := s.Exec(`UPDATE attendance_records SET status=?,checked_at=?,method=? WHERE session_id=? AND student_id=?`, status, checked, method, sessionID, studentID)
+	res, err := s.Exec(`UPDATE attendance_records SET status=?,checked_at=?,method=?
+WHERE session_id=? AND student_id=? AND EXISTS(
+SELECT 1 FROM attendance_sessions a
+WHERE a.id=attendance_records.session_id AND a.deleted_at IS NULL)`, status, checked, method, sessionID, studentID)
 	if err != nil {
 		return attendanceView{}, err
 	}
@@ -886,14 +1105,19 @@ func (s *store) updateAttendanceRecord(sessionID, studentID int64, status, metho
 func (s *store) publicStudents(classID int64) (map[string]any, error) {
 	var sessionID int64
 	var className, course, sessionAt string
-	err := s.QueryRow(`SELECT a.id,c.name,a.course,a.session_at FROM attendance_sessions a JOIN classes c ON c.id=a.class_id WHERE a.class_id=? AND a.status='active'`, classID).Scan(&sessionID, &className, &course, &sessionAt)
+	err := s.QueryRow(`SELECT a.id,COALESCE(NULLIF(a.class_name_snapshot,''),c.name),a.course,a.session_at
+FROM attendance_sessions a JOIN classes c ON c.id=a.class_id
+WHERE a.class_id=? AND a.status='active' AND a.deleted_at IS NULL AND c.deleted_at IS NULL`, classID).Scan(&sessionID, &className, &course, &sessionAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w: 该班当前没有开放签到", errConflict)
 	}
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.Query(`SELECT st.id,st.student_no,st.name,r.status FROM students st JOIN attendance_records r ON r.student_id=st.id AND r.session_id=? WHERE st.class_id=? ORDER BY CAST(st.student_no AS INTEGER),st.student_no`, sessionID, classID)
+	rows, err := s.Query(`SELECT st.id,st.student_no,st.name,r.status
+FROM students st JOIN attendance_records r ON r.student_id=st.id AND r.session_id=?
+WHERE st.class_id=? AND st.deleted_at IS NULL
+ORDER BY CAST(st.student_no AS INTEGER),st.student_no`, sessionID, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -924,7 +1148,11 @@ func attendanceTitleFromString(className, sessionAt string) string {
 func (s *store) checkIn(classID, studentID int64) (map[string]any, error) {
 	var sessionID int64
 	var name, status string
-	err := s.QueryRow(`SELECT a.id,st.name,r.status FROM attendance_sessions a JOIN attendance_records r ON r.session_id=a.id JOIN students st ON st.id=r.student_id WHERE a.class_id=? AND a.status='active' AND st.id=?`, classID, studentID).Scan(&sessionID, &name, &status)
+	err := s.QueryRow(`SELECT a.id,st.name,r.status
+FROM attendance_sessions a JOIN attendance_records r ON r.session_id=a.id
+JOIN students st ON st.id=r.student_id
+WHERE a.class_id=? AND a.status='active' AND a.deleted_at IS NULL
+AND st.deleted_at IS NULL AND st.id=?`, classID, studentID).Scan(&sessionID, &name, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("%w: 未找到开放签到或学生信息不匹配", errConflict)
 	}
@@ -1101,6 +1329,7 @@ func (s *store) schedule() (scheduleData, error) {
 	rows, err := s.Query(`SELECT l.id,l.class_id,c.name,l.course,l.weekday,l.period,p.start_time,p.end_time,l.location_odd,l.location_even
 FROM schedule_lessons l JOIN classes c ON c.id=l.class_id
 JOIN schedule_periods p ON p.period=l.period
+WHERE c.deleted_at IS NULL
 ORDER BY l.weekday,l.period,l.id`)
 	if err != nil {
 		return data, err
@@ -1141,7 +1370,8 @@ ORDER BY ch.original_date,ch.id`)
 func (s *store) scheduleLessonByID(id int64) (scheduleLesson, error) {
 	var lesson scheduleLesson
 	err := s.QueryRow(`SELECT l.id,l.class_id,c.name,l.course,l.weekday,l.period,p.start_time,p.end_time,l.location_odd,l.location_even
-FROM schedule_lessons l JOIN classes c ON c.id=l.class_id JOIN schedule_periods p ON p.period=l.period WHERE l.id=?`, id).
+FROM schedule_lessons l JOIN classes c ON c.id=l.class_id JOIN schedule_periods p ON p.period=l.period
+WHERE l.id=? AND c.deleted_at IS NULL`, id).
 		Scan(&lesson.ID, &lesson.ClassID, &lesson.ClassName, &lesson.Course, &lesson.Weekday, &lesson.Period, &lesson.StartTime, &lesson.EndTime, &lesson.LocationOdd, &lesson.LocationEven)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = errNotFound
@@ -1150,6 +1380,9 @@ FROM schedule_lessons l JOIN classes c ON c.id=l.class_id JOIN schedule_periods 
 }
 
 func (s *store) createScheduleLesson(in scheduleInput) (scheduleLesson, error) {
+	if _, err := s.classByID(in.ClassID); err != nil {
+		return scheduleLesson{}, err
+	}
 	if err := s.ensureScheduleCellAvailable(0, in.Weekday, in.Period); err != nil {
 		return scheduleLesson{}, err
 	}
@@ -1172,6 +1405,9 @@ func (s *store) createScheduleLesson(in scheduleInput) (scheduleLesson, error) {
 }
 
 func (s *store) updateScheduleLesson(id int64, in scheduleInput) (scheduleLesson, error) {
+	if _, err := s.classByID(in.ClassID); err != nil {
+		return scheduleLesson{}, err
+	}
 	if err := s.ensureScheduleCellAvailable(id, in.Weekday, in.Period); err != nil {
 		return scheduleLesson{}, err
 	}
@@ -1214,6 +1450,9 @@ func (s *store) setScheduleChange(lessonID int64, in scheduleChangeInput) (sched
 	}
 	var newClass any
 	if in.NewClassID > 0 {
+		if _, err := s.classByID(in.NewClassID); err != nil {
+			return scheduleChange{}, err
+		}
 		newClass = in.NewClassID
 	}
 	_, err := s.Exec(`INSERT INTO schedule_changes(lesson_id,original_date,status,new_date,new_start_time,new_end_time,new_class_id,note)
@@ -1262,6 +1501,13 @@ func (s *store) importSchedule(inputs []scheduleInput) (map[string]int, error) {
 	defer tx.Rollback()
 	added, skipped := 0, 0
 	for _, in := range inputs {
+		var classExists bool
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM classes WHERE id=? AND deleted_at IS NULL)`, in.ClassID).Scan(&classExists); err != nil {
+			return nil, err
+		}
+		if !classExists {
+			return nil, errNotFound
+		}
 		res, err := tx.Exec(`INSERT INTO schedule_lessons(class_id,course,weekday,period,start_time,end_time,location_odd,location_even)
 SELECT ?,?,?,p.period,p.start_time,p.end_time,?,? FROM schedule_periods p
 WHERE p.period=? AND NOT EXISTS (SELECT 1 FROM schedule_lessons l WHERE l.weekday=? AND l.period=?)`, in.ClassID, in.Course, in.Weekday, in.LocationOdd, in.LocationEven, in.Period, in.Weekday, in.Period)

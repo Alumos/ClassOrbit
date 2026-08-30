@@ -13,6 +13,9 @@ services:
       TEACHER_USERNAME: "${TEACHER_USERNAME:-}"
       TEACHER_PASSWORD: "${TEACHER_PASSWORD:-}"
       CLASS_SYSTEM_TOKEN: "${CLASS_SYSTEM_TOKEN:-}"
+      AUTO_BACKUP_ENABLED: "${AUTO_BACKUP_ENABLED:-true}"
+      BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-14}"
+      TRUST_PROXY_HEADERS: "${TRUST_PROXY_HEADERS:-false}"
     volumes:
       - classorbit_data:/app/data
     healthcheck:

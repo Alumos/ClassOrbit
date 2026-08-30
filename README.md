@@ -2,7 +2,7 @@
 
 ClassOrbit（智创课堂）是面向小学信息科技教师的轻量班级积分、课堂考勤与课程导航系统。Go 单进程提供 API 并托管 React 前端，数据存放在本地 SQLite，适合教师电脑、校内局域网或小型服务器部署。
 
-当前稳定版本为 `v1.0.0`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+当前稳定版本为 `v1.1.0`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
 ## 已实现
 
@@ -147,7 +147,7 @@ DATA_VOLUME_NAME=classorbit_data
 ALPINE_MIRROR=https://mirrors.aliyun.com/alpine
 TEACHER_USERNAME=teacher
 TEACHER_PASSWORD=请设置强密码
-# 与 TypeMatch 中 CLASS_SYSTEM_TOKEN 保持一致的随机共享密钥
+# 与 KeySprint 中 CLASS_SYSTEM_TOKEN 保持一致的随机共享密钥
 CLASS_SYSTEM_TOKEN=请设置一个随机共享密钥
 TZ=Asia/Shanghai
 AUTO_BACKUP_ENABLED=true
@@ -161,9 +161,9 @@ TRUST_PROXY_HEADERS=false
 APP_PORT=9000 ALPINE_MIRROR=https://mirrors.aliyun.com/alpine TEACHER_USERNAME=teacher TEACHER_PASSWORD='请设置强密码' CLASS_SYSTEM_TOKEN='请设置一个随机共享密钥' docker compose up -d
 ```
 
-### TypeMatch 班级名单同步
+### KeySprint 班级名单同步
 
-系统提供只读接口 `GET /api/integration/classes`，供 TypeMatch 获取教师管理的班级和学生名单。接口使用独立的共享 Bearer 密钥，不使用教师后台 Cookie，也不接收教师密码。请求中的 `teacher_username` 必须与本系统教师账号用户名一致；如果发送 `X-Teacher-Username`，它也必须与查询参数一致。部署时设置 `CLASS_SYSTEM_TOKEN`，并在 TypeMatch 中配置相同的 `CLASS_SYSTEM_TOKEN`。接口支持 ETag/`If-None-Match`，名单未变化时返回 `304`，适合定时同步。
+系统提供只读接口 `GET /api/integration/classes`，供 KeySprint 获取教师管理的班级和学生名单。接口使用独立的共享 Bearer 密钥，不使用教师后台 Cookie，也不接收教师密码。请求中的 `teacher_username` 必须与本系统教师账号用户名一致；如果发送 `X-Teacher-Username`，它也必须与查询参数一致。部署时设置 `CLASS_SYSTEM_TOKEN`，并在 KeySprint 中配置相同的 `CLASS_SYSTEM_TOKEN`。接口支持 ETag/`If-None-Match`，名单未变化时返回 `304`，适合定时同步。
 
 完整的请求参数、响应字段、错误码和接入注意事项见 [`docs/integration-classes-api.md`](docs/integration-classes-api.md)。
 
@@ -177,7 +177,7 @@ curl -G "https://积分系统地址/api/integration/classes" \
   -H "Authorization: Bearer 你的共享密钥"
 ```
 
-成功响应格式为 `{"classes":[{"name":"三 1 班","students":[{"id":"1001","name":"张三"}]}]}`。未提供凭证返回 `401`，共享密钥错误返回 `403`，教师账号不存在返回 `404`。
+成功响应格式为 `{"classes":[{"id":"1","name":"三 1 班","students":[{"id":"1001","name":"张三"}]}]}`。班级 `id` 在改名后保持稳定，KeySprint 会据此维持历史成绩关联。未提供凭证返回 `401`，共享密钥错误返回 `403`，教师账号不存在返回 `404`。
 
 常用运维命令：
 
@@ -213,14 +213,14 @@ PUBLIC_DIR=frontend/dist go run ./backend
 
 ```bash
 curl http://127.0.0.1:8080/api/health
-# {"commit":"...","database":true,"ok":true,"version":"1.0.0"}
+# {"commit":"...","database":true,"ok":true,"version":"1.1.0"}
 ```
 
 容器内也可以直接查询二进制版本：
 
 ```bash
 docker compose exec classorbit /app/classorbit --version
-# ClassOrbit 1.0.0 (<构建提交号>)
+# ClassOrbit 1.1.0 (<构建提交号>)
 ```
 
 要让同一局域网内的学生访问，可监听所有网卡：

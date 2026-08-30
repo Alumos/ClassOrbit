@@ -143,7 +143,7 @@ func TestIntegrationClassesEndpoint(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if len(payload.Classes) != 2 || payload.Classes[0].Name != "三 1 班" || payload.Classes[1].Name != "四 2 班" {
+	if len(payload.Classes) != 2 || payload.Classes[0].ID != fmt.Sprint(first.ID) || payload.Classes[0].Name != "三 1 班" || payload.Classes[1].ID != fmt.Sprint(second.ID) || payload.Classes[1].Name != "四 2 班" {
 		t.Fatalf("classes payload = %+v", payload)
 	}
 	conditional := httptest.NewRequest(http.MethodGet, "/api/integration/classes?teacher_username=teacher", nil)

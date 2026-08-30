@@ -642,7 +642,7 @@ ORDER BY c.id,CAST(st.student_no AS INTEGER),st.student_no,st.id`)
 		}
 		if len(out) == 0 || currentClassID != classID {
 			currentClassID = classID
-			out = append(out, integrationClass{Name: className, Students: []integrationStudent{}})
+			out = append(out, integrationClass{ID: strconv.FormatInt(classID, 10), Name: className, Students: []integrationStudent{}})
 		}
 		if !studentID.Valid {
 			continue

@@ -1,6 +1,6 @@
 # 班级名单开放接口
 
-本文档描述 ClassOrbit 提供给 TypeMatch 或其他受信任系统的班级名单只读接口。
+本文档描述 ClassOrbit 提供给 KeySprint 或其他受信任系统的班级名单只读接口。
 
 ## 接口概览
 
@@ -86,6 +86,7 @@ ETag: "<名单内容的 SHA-256 摘要>"
 {
   "classes": [
     {
+      "id": "1",
       "name": "三 1 班",
       "students": [
         {
@@ -99,6 +100,7 @@ ETag: "<名单内容的 SHA-256 摘要>"
       ]
     },
     {
+      "id": "2",
       "name": "四 2 班",
       "students": []
     }
@@ -124,6 +126,7 @@ curl -i -G "https://classorbit.example.com/api/integration/classes" \
 | JSON 路径 | 类型 | 是否总是存在 | 说明 |
 | --- | --- | --- | --- |
 | `classes` | array | 是 | 班级数组；没有班级时为 `[]`，不会返回 `null`。 |
+| `classes[].id` | string | 是 | ClassOrbit 班级的稳定 ID。班级改名后保持不变，调用方必须按字符串处理。 |
 | `classes[].name` | string | 是 | 班级显示名称，例如 `三 1 班`。 |
 | `classes[].students` | array | 是 | 该班学生数组；空班级返回 `[]`。 |
 | `classes[].students[].id` | string | 是 | 学生学号。必须按字符串处理，以保留 `001` 之类的前导零。若历史异常数据没有学号，服务端会回退为数据库内部 ID 的十进制字符串。 |
@@ -133,13 +136,14 @@ curl -i -G "https://classorbit.example.com/api/integration/classes" \
 
 - 班级按 ClassOrbit 中的创建顺序排列。
 - 学生优先按学号的数值顺序排列，再按学号文本和内部创建顺序排列。
-- 调用方不应依赖数组位置作为标识；学生应使用 `id`，班级应使用当前的 `name` 进行匹配。教师修改年级或班号后，班级名称也会变化。
+- 调用方不应依赖数组位置作为标识；学生与班级都应使用各自的 `id`。教师修改年级或班号后，班级名称会变化，但班级 `id` 保持不变。
 
 ### TypeScript 数据类型
 
 ```ts
 export type IntegrationClassesResponse = {
   classes: Array<{
+    id: string
     name: string
     students: Array<{
       id: string
@@ -193,7 +197,7 @@ curl --fail "https://classorbit.example.com/api/health"
 健康响应为：
 
 ```json
-{"commit":"构建提交号","database":true,"ok":true,"version":"1.0.0"}
+{"commit":"构建提交号","database":true,"ok":true,"version":"1.1.0"}
 ```
 
 再执行前述名单请求。收到 `200` 且 `classes` 为数组，即表示鉴权和数据格式均正常。

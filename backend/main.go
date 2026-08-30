@@ -606,6 +606,7 @@ type integrationClassesResponse struct {
 }
 
 type integrationClass struct {
+	ID       string               `json:"id"`
 	Name     string               `json:"name"`
 	Students []integrationStudent `json:"students"`
 }
@@ -616,7 +617,7 @@ type integrationStudent struct {
 }
 
 // getIntegrationClasses exposes the minimal read-only shape consumed by
-// TypeMatch. It deliberately uses a separate bearer token instead of the
+// KeySprint. It deliberately uses a separate bearer token instead of the
 // browser session cookie used by the teacher UI.
 func (s *server) getIntegrationClasses(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")

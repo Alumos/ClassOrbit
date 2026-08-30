@@ -1,0 +1,17 @@
+.git
+.gitignore
+.DS_Store
+.env
+data
+*.db
+*.db-shm
+*.db-wal
+classorbit
+classpoint
+frontend/node_modules
+frontend/dist
+frontend/*.tsbuildinfo
+README.md
+.github
+docs
+compose*.yaml

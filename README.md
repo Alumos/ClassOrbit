@@ -2,6 +2,8 @@
 
 ClassOrbit（智创课堂）是面向小学信息科技教师的轻量班级积分、课堂考勤与课程导航系统。Go 单进程提供 API 并托管 React 前端，数据存放在本地 SQLite，适合教师电脑、校内局域网或小型服务器部署。
 
+当前稳定版本为 `v1.0.0`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+
 ## 已实现
 
 - 多班级管理，Excel 批量导入学号和姓名
@@ -40,6 +42,9 @@ classorbit/
 ├── backend/                # Go API、SQLite 数据层、迁移与测试
 ├── docs/                   # 对外接口和改进路线文档
 ├── frontend/               # React、Radix UI 前端
+├── VERSION                 # 单一应用版本号来源
+├── CHANGELOG.md            # 按 SemVer 维护的发布记录
+├── CONTRIBUTING.md         # 分支、提交与 Tag 发布规范
 ├── Dockerfile              # 前后端多阶段构建
 ├── compose.yaml            # 从源码构建并部署
 ├── compose.deploy.yaml     # 直接使用预构建镜像部署
@@ -62,6 +67,8 @@ Go 后端原先位于项目根目录的 `main.go` 和 `store.go`，并非缺少�
 5. 为镜像附加 SBOM、构建来源以及版本标签。
 
 推送到 `main` 后会生成 `latest`、`main` 和 `sha-xxxxxxx` 标签；推送 `v1.2.3` 形式的 Git 标签还会生成 `1.2.3` 与 `1.2` 标签。Pull Request 只构建和测试，不发布镜像。
+
+Tag 发布前，Actions 会校验根目录 `VERSION`、前端包版本、`CHANGELOG.md` 和 Git Tag 完全一致。版本镜像发布成功后会自动创建 GitHub Release。已经公开的版本 Tag 不应移动或覆盖。
 
 首次发布后，在 GitHub 仓库的 Packages 页面把镜像设为 Public，即可在服务器上免登录拉取；如果保持 Private，需要先在服务器登录 GHCR。
 
@@ -202,6 +209,20 @@ PUBLIC_DIR=frontend/dist go run ./backend
 
 默认地址为 `http://127.0.0.1:8080`。首次访问时在页面中创建教师账号和密码。
 
+健康接口同时返回运行版本和构建提交，便于核对部署内容：
+
+```bash
+curl http://127.0.0.1:8080/api/health
+# {"commit":"...","database":true,"ok":true,"version":"1.0.0"}
+```
+
+容器内也可以直接查询二进制版本：
+
+```bash
+docker compose exec classorbit /app/classorbit --version
+# ClassOrbit 1.0.0 (<构建提交号>)
+```
+
 要让同一局域网内的学生访问，可监听所有网卡：
 
 ```bash
@@ -234,8 +255,10 @@ PUBLIC_DIR=frontend/dist ADDR=0.0.0.0:8080 go run ./backend
 
 ```bash
 make test
+make release-check
+make version
 ```
 
-`make test` 会执行前端生产构建、Vitest/React Testing Library 测试以及 Go 后端/API 测试。
+`make test` 会执行前端生产构建、Vitest/React Testing Library 测试以及 Go 后端/API 测试。`make release-check` 校验版本文件和更新日志一致性，`make version` 显示本地构建将写入的版本和提交号。
 
 更完整的性能、安全和功能改进建议见 [`docs/improvement-roadmap.md`](docs/improvement-roadmap.md)。

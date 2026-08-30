@@ -22,6 +22,26 @@ func testAPI(t *testing.T) (*store, http.Handler) {
 	return db, s.requireTeacher(mux)
 }
 
+func TestHealthReportsDatabaseAndBuild(t *testing.T) {
+	_, handler := testAPI(t)
+	response := apiRequest(t, handler, http.MethodGet, "/api/health", "", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("health status = %d: %s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		OK       bool   `json:"ok"`
+		Database bool   `json:"database"`
+		Version  string `json:"version"`
+		Commit   string `json:"commit"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || !payload.Database || payload.Version == "" || payload.Commit == "" {
+		t.Fatalf("health payload = %+v", payload)
+	}
+}
+
 func apiRequest(t *testing.T, handler http.Handler, method, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(method, path, bytes.NewBufferString(body))

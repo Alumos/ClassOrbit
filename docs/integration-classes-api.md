@@ -193,7 +193,7 @@ curl --fail "https://classorbit.example.com/api/health"
 健康响应为：
 
 ```json
-{"database":true,"ok":true}
+{"commit":"构建提交号","database":true,"ok":true,"version":"1.0.0"}
 ```
 
 再执行前述名单请求。收到 `200` 且 `classes` 为数组，即表示鉴权和数据格式均正常。

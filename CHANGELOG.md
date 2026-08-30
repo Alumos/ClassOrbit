@@ -1,0 +1,25 @@
+# 更新日志
+
+本项目的显著变更都记录在这里。版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)，记录格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
+
+## [Unreleased]
+
+## [1.0.0] - 2026-08-30
+
+### Added
+
+- 班级与学生名单管理、Excel 导入、课堂积分、随机点名和可审计积分撤销。
+- 学生自助签到、教师考勤台、考勤回收站、历史名单快照和 Excel 报表。
+- 服务器时间驱动的当前课时识别，兼容校历、节次、单双周地点、占课和临时换课，并要求教师人工确认。
+- TypeMatch 班级名单只读接口，支持独立 Bearer Token、ETag 和 `304 Not Modified`。
+- 教师账号初始化、密码修改、会话撤销、操作审计、公开接口限流和安全响应头。
+- SQLite 版本迁移、一致性备份与恢复、每日自动备份和保留策略。
+- Docker Compose 部署、GHCR 多架构镜像、SBOM、构建来源和 GitHub Actions 自动发布。
+
+### Security
+
+- 教师 API 与学生公开 API 隔离，密码使用 bcrypt 存储，登录会话只保存 Token 哈希。
+- npm 依赖审计在发布时无已知漏洞。
+
+[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.0.0

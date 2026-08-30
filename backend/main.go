@@ -54,6 +54,10 @@ type apiError struct {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Println(buildVersionText())
+		return
+	}
 	dataDir := env("DATA_DIR", "data")
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		log.Fatal(err)

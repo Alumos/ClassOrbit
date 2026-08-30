@@ -42,16 +42,17 @@ func runHTTP(addr string, handler http.Handler) error {
 }
 
 func (s *server) health(w http.ResponseWriter, _ *http.Request) {
+	build := currentBuildInfo()
 	if err := s.db.Ping(); err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "database": false})
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "database": false, "version": build.Version, "commit": build.Commit})
 		return
 	}
 	var one int
 	if err := s.db.QueryRow(`SELECT 1`).Scan(&one); err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "database": false})
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "database": false, "version": build.Version, "commit": build.Commit})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "database": true})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "database": true, "version": build.Version, "commit": build.Commit})
 }
 
 func (s *server) maintenance(next http.Handler) http.Handler {

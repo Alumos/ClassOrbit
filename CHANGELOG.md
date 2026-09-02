@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-09-02
+
+### Fixed
+
+- 放大并加粗全站纯图标按钮，提升其最小触控区域；名单维护的编辑与删除操作增加清晰边框、间距和危险色提示。
+
 ## [1.5.0] - 2026-09-02
 
 ### Added
@@ -54,7 +60,8 @@
 - 教师 API 与学生公开 API 隔离，密码使用 bcrypt 存储，登录会话只保存 Token 哈希。
 - npm 依赖审计在发布时无已知漏洞。
 
-[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.5.1
 [1.5.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.5.0
 [1.4.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.3.0

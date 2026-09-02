@@ -75,7 +75,8 @@ a { color: inherit; text-decoration: none; }
 .button-ghost:hover { background: #f4f4f5; color: #18181b; }
 .button-danger { background: #dc2626; }
 .button-danger:hover { background: #b91c1c; }
-.button-icon { width: 34px; padding: 0; }
+.button-icon { width: 36px; min-width: 36px; padding: 0; }
+.button-icon > svg { width: 18px; height: 18px; flex: none; stroke-width: 2.25; }
 .button-sm { height: 31px; padding: 0 10px; font-size: 11px; }
 .input { width: 100%; height: 36px; padding: 0 10px; border: 1px solid #d4d4d8; border-radius: 6px; background: #fff; color: #18181b; font-size: 12px; box-shadow: 0 1px 1px rgba(0,0,0,.02); }
 .input::placeholder { color: #a1a1aa; }
@@ -217,6 +218,11 @@ td strong { color: #27272a; font-weight: 550; }
 .roster-table { max-height: 390px; border-top: 1px solid var(--border); overflow: auto; }
 .roster-loading { min-height: 220px; border-top: 1px solid var(--border); color: var(--muted); display: grid; place-items: center; font-size: 11px; }
 .roster-empty { border-top: 1px solid var(--border); }.roster-empty .empty-state { min-height: 240px; }
+.roster-actions { gap: 6px; }
+.roster-actions .button-icon { border-color: #d4d4d8; background: #fff; color: #3f3f46; }
+.roster-actions .button-icon:hover { border-color: #a1a1aa; background: #f4f4f5; }
+.roster-actions .roster-delete-action { color: var(--red); }
+.roster-actions .roster-delete-action:hover { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }
 .info-box { margin: 0; flex-direction: row; gap: 9px; color: #52525b; }.info-box > div { display: flex; flex-direction: column; }
 
 .attendance-filters { justify-content: flex-start; }
@@ -432,7 +438,7 @@ body { font-family: var(--app-font-kai); font-size: var(--text-md); }
 .page-heading h1 { font-size: var(--text-xl); line-height: 28px; }.page-heading p { margin-top: 2px; font-size: var(--text-sm); line-height: 18px; }
 
 .button { height: 36px; padding: 0 14px; font-size: var(--text-base); }
-.button-icon { width: 32px; }.button-sm { height: 30px; padding: 0 10px; font-size: var(--text-sm); }
+.button-icon { width: 36px; min-width: 36px; }.button-sm { height: 30px; padding: 0 10px; font-size: var(--text-sm); }
 .input { height: 36px; padding: 0 10px; font-size: var(--text-base); }
 .select-trigger { min-width: 155px; height: 36px; font-size: var(--text-base); }
 .select-item, .dropdown-item { min-height: 32px; font-size: var(--text-base); }

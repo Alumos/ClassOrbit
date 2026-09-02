@@ -47,8 +47,12 @@ describe('ClassesPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '维护名单' }))
     expect(await screen.findByText('原有学生')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '编辑原有学生' })).toHaveAttribute('title', '编辑学生')
-    expect(screen.getByRole('button', { name: '删除原有学生' })).toHaveClass('roster-delete-action')
+    const editButton = screen.getByRole('button', { name: '编辑原有学生' })
+    const deleteButton = screen.getByRole('button', { name: '删除原有学生' })
+    expect(editButton).toHaveAttribute('title', '编辑学生')
+    expect(editButton).toHaveTextContent('编辑')
+    expect(deleteButton).toHaveClass('roster-delete-action')
+    expect(deleteButton).toHaveTextContent('删除')
     fireEvent.click(screen.getByRole('button', { name: '添加学生' }))
 
     const addDialog = await screen.findByRole('dialog', { name: '添加学生' })

@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-09-02
+
+### Fixed
+
+- 名单表格的编辑与删除操作改为带边框、图标和可见文字的按钮，避免纯图标在高分屏或页面缩放时小到无法辨认。
+
 ## [1.5.1] - 2026-09-02
 
 ### Fixed
@@ -60,7 +66,8 @@
 - 教师 API 与学生公开 API 隔离，密码使用 bcrypt 存储，登录会话只保存 Token 哈希。
 - npm 依赖审计在发布时无已知漏洞。
 
-[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.5.2...HEAD
+[1.5.2]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.5.2
 [1.5.1]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.5.1
 [1.5.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.5.0
 [1.4.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.4.0

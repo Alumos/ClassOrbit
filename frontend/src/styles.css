@@ -219,9 +219,11 @@ td strong { color: #27272a; font-weight: 550; }
 .roster-loading { min-height: 220px; border-top: 1px solid var(--border); color: var(--muted); display: grid; place-items: center; font-size: 11px; }
 .roster-empty { border-top: 1px solid var(--border); }.roster-empty .empty-state { min-height: 240px; }
 .roster-actions { gap: 6px; }
-.roster-actions .button-icon { border-color: #d4d4d8; background: #fff; color: #3f3f46; }
-.roster-actions .button-icon:hover { border-color: #a1a1aa; background: #f4f4f5; }
-.roster-actions .roster-delete-action { color: var(--red); }
+.roster-actions .button { min-width: 68px; height: 36px; padding: 0 12px; font-size: 13px; font-weight: 600; }
+.roster-actions .button > svg { width: 17px; height: 17px; min-width: 17px; stroke-width: 2.4; }
+.roster-actions .roster-edit-action { border-color: #a1a1aa; background: #fff; color: #27272a; }
+.roster-actions .roster-edit-action:hover { border-color: #71717a; background: #f4f4f5; }
+.roster-actions .roster-delete-action { border-color: #fecaca; background: #fff; color: var(--red); }
 .roster-actions .roster-delete-action:hover { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }
 .info-box { margin: 0; flex-direction: row; gap: 9px; color: #52525b; }.info-box > div { display: flex; flex-direction: column; }
 

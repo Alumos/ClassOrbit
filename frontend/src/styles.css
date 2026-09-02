@@ -210,7 +210,13 @@ td strong { color: #27272a; font-weight: 550; }
 .import-note, .info-box { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: #fafafa; display: flex; flex-direction: column; gap: 2px; }
 .import-note strong, .info-box strong { font-size: 10px; }.import-note span, .info-box span { color: var(--muted); font-size: 9px; line-height: 15px; }
 .danger-box { padding: 12px; border: 1px solid #fecaca; border-radius: 6px; background: #fef2f2; color: #7f1d1d; font-size: 11px; }
-.roster-table { max-height: 440px; margin: -5px -18px -18px; overflow: auto; }
+.roster-manager { margin: -5px -18px -18px; }
+.roster-toolbar { min-height: 58px; padding: 8px 18px 13px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.roster-toolbar > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.roster-toolbar strong { font-size: 12px; }.roster-toolbar span { color: var(--muted); font-size: 10px; line-height: 16px; }
+.roster-table { max-height: 390px; border-top: 1px solid var(--border); overflow: auto; }
+.roster-loading { min-height: 220px; border-top: 1px solid var(--border); color: var(--muted); display: grid; place-items: center; font-size: 11px; }
+.roster-empty { border-top: 1px solid var(--border); }.roster-empty .empty-state { min-height: 240px; }
 .info-box { margin: 0; flex-direction: row; gap: 9px; color: #52525b; }.info-box > div { display: flex; flex-direction: column; }
 
 .attendance-filters { justify-content: flex-start; }
@@ -343,11 +349,17 @@ td strong { color: #27272a; font-weight: 550; }
 .hidden-file { display: none; }
 .report-controls { padding: 16px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .report-controls .input { width: 155px; }
+.audit-header-actions { display: flex; align-items: center; gap: 6px; }
+.audit-toggle svg { transition: transform .15s; }.audit-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.audit-content { border-top: 1px solid var(--border); }
 .audit-list { padding: 4px 16px 12px; }
 .audit-item { min-height: 62px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 30px minmax(0,1fr) auto; align-items: center; gap: 10px; }
 .audit-item:last-child { border-bottom: 0; }.audit-item > span { width: 30px; height: 30px; border-radius: 6px; background: #f4f4f5; color: #71717a; display: grid; place-items: center; }
 .audit-item > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }.audit-item strong { font-size: 12px; }.audit-item small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .audit-item time { color: var(--muted); font-size: 10px; }
+.audit-loading { min-height: 120px; color: var(--muted); display: grid; place-items: center; font-size: 11px; }
+.audit-pagination { min-height: 54px; padding: 9px 16px; border-top: 1px solid var(--border); background: #fafafa; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.audit-pagination > span { color: var(--muted); font-size: 10px; }.audit-pagination > div { display: flex; gap: 6px; }
 .schedule-attendance-button { width: 100%; margin-top: 10px; }
 
 .checkin-page { min-height: 100vh; background: #f4f4f5; display: flex; flex-direction: column; }
@@ -468,6 +480,7 @@ td { height: 43px; padding: 6px 12px; }
 .upload-zone strong { font-size: var(--text-md); }.upload-zone p { font-size: var(--text-sm); }
 .import-note strong, .info-box strong { font-size: var(--text-sm); }.import-note span, .info-box span { font-size: var(--text-xs); line-height: 17px; }
 .danger-box { font-size: var(--text-base); }
+.roster-toolbar strong { font-size: var(--text-sm); }.roster-toolbar span, .roster-loading { font-size: var(--text-xs); }
 
 .attendance-summary { min-height: 86px; margin-bottom: 14px; }
 .attendance-summary span:not(.summary-icon,.status) { font-size: var(--text-xs); }.attendance-summary strong { font-size: var(--text-xl); }.attendance-summary .summary-time { font-size: var(--text-md); }
@@ -504,6 +517,8 @@ td { height: 43px; padding: 6px 12px; }
 .setup-kicker,
 .audit-item small,
 .audit-item time,
+.audit-loading,
+.audit-pagination > span,
 .secure-note,
 .name-grid small {
   font-size: var(--text-xs);
@@ -584,6 +599,8 @@ td { height: 43px; padding: 6px 12px; }
   .settings-grid { grid-template-columns: 1fr; }.report-controls { align-items: stretch; flex-direction: column; }.report-controls .select-trigger, .report-controls .input, .report-controls .button { width: 100%; }
   .admin-action-row { align-items: flex-start; flex-direction: column; }.admin-action-row .button { width: 100%; }
   .audit-item { grid-template-columns: 30px minmax(0,1fr); }.audit-item time { grid-column: 2; }
+  .audit-pagination { align-items: stretch; flex-direction: column; }.audit-pagination > div { display: grid; grid-template-columns: 1fr 1fr; }
+  .roster-toolbar { align-items: stretch; flex-direction: column; }.roster-toolbar .button { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

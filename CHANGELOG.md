@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-02
+
+### Added
+
+- 班级列表新增直达的可视化名单维护入口，可在同一界面新增插班生、编辑或删除学生。
+
+### Changed
+
+- 操作审计默认折叠，并改为每页 10 条的游标分页，避免设置页面被日志持续拉长。
+
 ## [1.4.0] - 2026-09-02
 
 ### Added
@@ -44,7 +54,8 @@
 - 教师 API 与学生公开 API 隔离，密码使用 bcrypt 存储，登录会话只保存 Token 哈希。
 - npm 依赖审计在发布时无已知漏洞。
 
-[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.5.0
 [1.4.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.3.0
 [1.1.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.1.0

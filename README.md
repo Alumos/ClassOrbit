@@ -2,11 +2,11 @@
 
 ClassOrbit（智创课堂）是面向小学信息科技教师的轻量班级积分、课堂考勤与课程导航系统。Go 单进程提供 API 并托管 React 前端，数据存放在本地 SQLite，适合教师电脑、校内局域网或小型服务器部署。
 
-当前稳定版本为 `v1.4.0`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+当前稳定版本为 `v1.5.0`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
 ## 已实现
 
-- 多班级管理，Excel 批量导入学号和姓名
+- 多班级管理，Excel 批量导入学号和姓名，并可视化新增、编辑或删除学生
 - 一至六年级与班号结构化管理，升年级后历史考勤自动同步班级名称
 - 学生积分卡快速加减分、自定义分值与原因、积分流水
 - 按学号或积分排序，按姓名和学号搜索
@@ -240,7 +240,7 @@ PUBLIC_DIR=frontend/dist ADDR=0.0.0.0:8080 go run ./backend
 | 2026001 | 张同学 |
 | 2026002 | 李同学 |
 
-也识别 `student_no/name`、`student no/student name` 等英文表头。没有表头时默认读取前两列。班级内重复学号会跳过，不覆盖原学生信息。
+也识别 `student_no/name`、`student no/student name` 等英文表头。没有表头时默认读取前两列。班级内重复学号会跳过，不覆盖原学生信息。导入完成后可从班级行的“维护名单”进入可视化名单，继续补录插班生或修正学生资料。
 
 课程表也支持 `.xlsx` 和 `.xlsm`，第一行需包含以下表头；“班级”应与后台已创建的班级一致：
 

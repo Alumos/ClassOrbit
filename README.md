@@ -2,7 +2,7 @@
 
 ClassOrbit（智创课堂）是面向小学信息科技教师的轻量班级积分、课堂考勤与课程导航系统。Go 单进程提供 API 并托管 React 前端，数据存放在本地 SQLite，适合教师电脑、校内局域网或小型服务器部署。
 
-当前稳定版本为 `v1.1.0`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+当前稳定版本为 `v1.4.0`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
 ## 已实现
 
@@ -233,7 +233,7 @@ PUBLIC_DIR=frontend/dist ADDR=0.0.0.0:8080 go run ./backend
 
 ## Excel 格式
 
-支持 `.xlsx` 和 `.xlsm`，读取第一个工作表，单次最多 200 人。推荐格式：
+学生名单支持 `.xlsx`、`.xlsm` 和旧版 `.xls`，读取第一个工作表，单次最多 200 人。推荐格式：
 
 | 学号 | 姓名 |
 | --- | --- |

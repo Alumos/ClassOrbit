@@ -884,17 +884,11 @@ func requestUsesHTTPS(r *http.Request) bool {
 }
 
 func parseExcel(file multipart.File) ([]studentInput, error) {
-	x, err := excelize.OpenReader(file)
+	rows, err := readStudentExcelRows(file)
 	if err != nil {
-		return nil, errors.New("无法读取 Excel，请使用 .xlsx 或 .xlsm 文件")
+		return nil, errors.New("无法读取 Excel，请使用 .xlsx、.xlsm 或 .xls 文件")
 	}
-	defer x.Close()
-	sheets := x.GetSheetList()
-	if len(sheets) == 0 {
-		return nil, errors.New("Excel 中没有工作表")
-	}
-	rows, err := x.GetRows(sheets[0])
-	if err != nil || len(rows) == 0 {
+	if len(rows) == 0 {
 		return nil, errors.New("Excel 中没有可导入的数据")
 	}
 	noCol, nameCol, start := -1, -1, 0

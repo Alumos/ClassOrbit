@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-02
+
+### Added
+
+- 学生名单导入兼容 Excel 97–2003 `.xls` 文件，并继续支持 `.xlsx` 与 `.xlsm`。
+
 ## [1.3.0] - 2026-08-31
 
 ### Changed
@@ -38,7 +44,8 @@
 - 教师 API 与学生公开 API 隔离，密码使用 bcrypt 存储，登录会话只保存 Token 哈希。
 - npm 依赖审计在发布时无已知漏洞。
 
-[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.3.0
 [1.1.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.0.0

@@ -3,6 +3,7 @@ module classorbit
 go 1.24.0
 
 require (
+	github.com/kardianos/xls v0.0.1
 	github.com/xuri/excelize/v2 v2.9.1
 	golang.org/x/crypto v0.38.0
 	modernc.org/sqlite v1.36.3

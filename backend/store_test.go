@@ -538,8 +538,10 @@ func TestMigrationFromLegacySchema(t *testing.T) {
 	_, err = db.Exec(`
 CREATE TABLE classes (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL UNIQUE,grade TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL);
 CREATE TABLE attendance_sessions (id INTEGER PRIMARY KEY AUTOINCREMENT,class_id INTEGER NOT NULL REFERENCES classes(id),title TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',started_at TEXT NOT NULL,ended_at TEXT);
+CREATE TABLE navigation_links (id INTEGER PRIMARY KEY AUTOINCREMENT,title TEXT NOT NULL,url TEXT NOT NULL,icon_url TEXT NOT NULL DEFAULT '',sort_order INTEGER NOT NULL UNIQUE,created_at TEXT NOT NULL);
 INSERT INTO classes(id,name,grade,created_at) VALUES(1,'五 2 班','五','2026-07-14 08:00:00');
 INSERT INTO attendance_sessions(id,class_id,title,status,started_at) VALUES(1,1,'旧场次','closed','2026-07-14 09:00:00');
+INSERT INTO navigation_links(id,title,url,icon_url,sort_order,created_at) VALUES(1,'旧导航','https://example.com/','',0,'2026-07-14 08:00:00');
 `)
 	if err != nil {
 		t.Fatal(err)
@@ -558,5 +560,9 @@ INSERT INTO attendance_sessions(id,class_id,title,status,started_at) VALUES(1,1,
 	}
 	if classNo != "" || course != "信息课" || sessionAt != "2026-07-14 09:00:00" {
 		t.Fatalf("migrated values = classNo %q, course %q, sessionAt %q", classNo, course, sessionAt)
+	}
+	items, err := s.navigation()
+	if err != nil || len(items) != 1 || items[0].Kind != "external" || items[0].Title != "旧导航" {
+		t.Fatalf("migrated navigation = %+v, %v", items, err)
 	}
 }

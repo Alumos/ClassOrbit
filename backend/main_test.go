@@ -1,13 +1,19 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
@@ -17,6 +23,9 @@ func testAPI(t *testing.T) (*store, http.Handler) {
 	t.Helper()
 	db := testStore(t)
 	s := &server{db: db}
+	if err := s.refreshTeachingSiteRegistry(); err != nil {
+		t.Fatal(err)
+	}
 	mux := http.NewServeMux()
 	s.routes(mux)
 	return db, s.requireTeacher(mux)
@@ -452,5 +461,229 @@ func TestNavigationBatchValidationAndPublicRead(t *testing.T) {
 	response = apiRequest(t, handler, http.MethodPut, "/api/navigation", `{"items":[]}`, cookie)
 	if response.Code != http.StatusOK || response.Body.String() != "[]\n" {
 		t.Fatalf("empty navigation response = %d: %q", response.Code, response.Body.String())
+	}
+}
+
+type teachingSiteTestFile struct {
+	Name string
+	Path string
+	Data []byte
+}
+
+func teachingSiteAPIRequest(t *testing.T, handler http.Handler, method, requestPath, mode, title string, files []teachingSiteTestFile, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("mode", mode); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteField("title", title); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteField("sourceName", "示例项目"); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		part, err := writer.CreateFormFile("files", file.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(file.Data); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.WriteField("paths", file.Path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(method, requestPath, &body)
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	if cookie != nil {
+		request.AddCookie(cookie)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func makeTeachingSiteZIP(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var body bytes.Buffer
+	writer := zip.NewWriter(&body)
+	for _, name := range sortedKeys(files) {
+		part, err := writer.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write([]byte(files[name])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return body.Bytes()
+}
+
+func sortedKeys(values map[string]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+func TestTeachingSiteCRUDDirectoryZIPAndConcurrentServing(t *testing.T) {
+	db, handler := testAPI(t)
+	setup := apiRequest(t, handler, http.MethodPost, "/api/setup", `{"username":"teacher","password":"strong-pass-123"}`, nil)
+	cookie := responseCookie(t, setup)
+
+	files := []teachingSiteTestFile{
+		{Name: "index.html", Path: "binary-demo/index.html", Data: []byte(`<!doctype html><link rel="stylesheet" href="assets/style.css"><script>document.body.dataset.ready='yes'</script><h1>二进制练习</h1>`)},
+		{Name: "style.css", Path: "binary-demo/assets/style.css", Data: []byte("h1{color:green}")},
+		{Name: "empty.txt", Path: "binary-demo/empty.txt", Data: []byte{}},
+	}
+	response := teachingSiteAPIRequest(t, handler, http.MethodPost, "/api/navigation/sites", "folder", "二进制互动练习", files, cookie)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("create teaching site = %d: %s", response.Code, response.Body.String())
+	}
+	var created navigationLink
+	if err := json.Unmarshal(response.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.Kind != "site" || created.Site == nil || created.Site.FileCount != 3 || created.Site.ExtractedSize == 0 || created.URL == "" {
+		t.Fatalf("created teaching site = %+v", created)
+	}
+
+	response = apiRequest(t, handler, http.MethodGet, fmt.Sprintf("/api/navigation/sites/%d", created.ID), "", cookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("read teaching site = %d: %s", response.Code, response.Body.String())
+	}
+	response = apiRequest(t, handler, http.MethodGet, fmt.Sprintf("/api/navigation/sites/%d", created.ID), "", nil)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated teaching-site metadata = %d", response.Code)
+	}
+
+	// Remove the extracted cache and hit it concurrently. One request rebuilds
+	// from the database archive while all readers receive the same static page.
+	if err := os.RemoveAll(filepath.Join(filepath.Dir(db.path), "site-cache")); err != nil {
+		t.Fatal(err)
+	}
+	var wait sync.WaitGroup
+	errorsFound := make(chan string, 50)
+	for index := 0; index < 50; index++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			result := apiRequest(t, handler, http.MethodGet, created.URL, "", nil)
+			if result.Code != http.StatusOK || !bytes.Contains(result.Body.Bytes(), []byte("二进制练习")) {
+				errorsFound <- fmt.Sprintf("status=%d body=%q", result.Code, result.Body.String())
+			}
+			if csp := result.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox") || strings.Contains(csp, "allow-same-origin") {
+				errorsFound <- "teaching page is not origin-isolated"
+			}
+		}()
+	}
+	wait.Wait()
+	close(errorsFound)
+	for message := range errorsFound {
+		t.Error(message)
+	}
+	response = apiRequest(t, handler, http.MethodGet, created.URL+"assets/style.css", "", nil)
+	if response.Code != http.StatusOK || response.Body.String() != "h1{color:green}" {
+		t.Fatalf("nested teaching-site asset = %d: %q", response.Code, response.Body.String())
+	}
+
+	updateBody := fmt.Sprintf(`{"items":[{"id":%d,"kind":"site","title":"更新后的练习","url":"javascript:ignored","iconUrl":""},{"kind":"external","title":"示例","url":"https://example.com/","iconUrl":""}]}`, created.ID)
+	response = apiRequest(t, handler, http.MethodPut, "/api/navigation", updateBody, cookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("update mixed navigation = %d: %s", response.Code, response.Body.String())
+	}
+	var navigation []navigationLink
+	if err := json.Unmarshal(response.Body.Bytes(), &navigation); err != nil {
+		t.Fatal(err)
+	}
+	if len(navigation) != 2 || navigation[0].ID != created.ID || navigation[0].Title != "更新后的练习" || navigation[0].Kind != "site" {
+		t.Fatalf("updated mixed navigation = %+v", navigation)
+	}
+
+	zipData := makeTeachingSiteZIP(t, map[string]string{
+		"lesson/index.html":     "<!doctype html><h1>新版本</h1>",
+		"lesson/scripts/app.js": "document.body.dataset.version='2'",
+	})
+	response = teachingSiteAPIRequest(t, handler, http.MethodPut, fmt.Sprintf("/api/navigation/sites/%d", created.ID), "zip", "更新后的练习", []teachingSiteTestFile{{Name: "lesson.zip", Path: "lesson.zip", Data: zipData}}, cookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("replace teaching site = %d: %s", response.Code, response.Body.String())
+	}
+	var updated navigationLink
+	if err := json.Unmarshal(response.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.ID != created.ID || updated.Site == nil || updated.Site.Revision == created.Site.Revision || updated.Site.FileCount != 2 {
+		t.Fatalf("replaced teaching site = %+v", updated)
+	}
+	response = apiRequest(t, handler, http.MethodGet, updated.URL, "", nil)
+	if response.Code != http.StatusOK || !bytes.Contains(response.Body.Bytes(), []byte("新版本")) {
+		t.Fatalf("updated teaching page = %d: %s", response.Code, response.Body.String())
+	}
+	singleHTML := []byte(`<!doctype html><meta charset="utf-8"><h1>单文件终稿</h1>`)
+	response = teachingSiteAPIRequest(t, handler, http.MethodPut, fmt.Sprintf("/api/navigation/sites/%d", created.ID), "html", "更新后的练习", []teachingSiteTestFile{{Name: "final.html", Path: "final.html", Data: singleHTML}}, cookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("replace with single HTML = %d: %s", response.Code, response.Body.String())
+	}
+	var singleFileVersion navigationLink
+	if err := json.Unmarshal(response.Body.Bytes(), &singleFileVersion); err != nil {
+		t.Fatal(err)
+	}
+	if singleFileVersion.Site == nil || singleFileVersion.Site.FileCount != 1 || singleFileVersion.Site.SourceName != "final.html" {
+		t.Fatalf("single-file teaching site = %+v", singleFileVersion)
+	}
+	updated = singleFileVersion
+	response = apiRequest(t, handler, http.MethodGet, updated.URL, "", nil)
+	if response.Code != http.StatusOK || !bytes.Equal(response.Body.Bytes(), singleHTML) {
+		t.Fatalf("single-file teaching page = %d: %s", response.Code, response.Body.String())
+	}
+
+	backupPath, err := db.createBackup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(backupPath)
+	backup, err := openStore(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer backup.Close()
+	if payload, err := backup.teachingSiteArchive(updated.Site.PublicID, updated.Site.Revision); err != nil || len(payload) == 0 {
+		t.Fatalf("teaching-site archive in backup = %d bytes, %v", len(payload), err)
+	}
+
+	response = apiRequest(t, handler, http.MethodDelete, fmt.Sprintf("/api/navigation/sites/%d", created.ID), "", cookie)
+	if response.Code != http.StatusOK {
+		t.Fatalf("delete teaching site = %d: %s", response.Code, response.Body.String())
+	}
+	response = apiRequest(t, handler, http.MethodGet, updated.URL, "", nil)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("deleted teaching page remains public: %d", response.Code)
+	}
+}
+
+func TestTeachingSiteRejectsUnsafeOrIncompleteZIP(t *testing.T) {
+	_, handler := testAPI(t)
+	setup := apiRequest(t, handler, http.MethodPost, "/api/setup", `{"username":"teacher","password":"strong-pass-123"}`, nil)
+	cookie := responseCookie(t, setup)
+	for name, archive := range map[string][]byte{
+		"missing index": makeTeachingSiteZIP(t, map[string]string{"lesson.html": "<h1>无入口</h1>"}),
+		"zip slip":      makeTeachingSiteZIP(t, map[string]string{"../index.html": "<h1>越界</h1>"}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := teachingSiteAPIRequest(t, handler, http.MethodPost, "/api/navigation/sites", "zip", "无效项目", []teachingSiteTestFile{{Name: "invalid.zip", Path: path.Base("invalid.zip"), Data: archive}}, cookie)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("invalid ZIP status = %d: %s", response.Code, response.Body.String())
+			}
+		})
 	}
 }

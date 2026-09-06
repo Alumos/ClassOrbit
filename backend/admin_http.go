@@ -17,7 +17,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const maxRestoreSize = 128 << 20
+// A complete SQLite backup can also contain compressed teaching-site sources.
+const maxRestoreSize = 512 << 20
 
 func (s *server) changePassword(w http.ResponseWriter, r *http.Request) {
 	var input struct {
@@ -179,6 +180,14 @@ func (s *server) restoreBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.db = reopened
+	if err := s.refreshTeachingSiteRegistry(); err != nil {
+		respond(w, nil, err)
+		return
+	}
+	if err := s.pruneSiteCache(); err != nil {
+		respond(w, nil, err)
+		return
+	}
 	_, _ = s.db.Exec(`DELETE FROM teacher_sessions`)
 	_ = addAudit(s.db, "backup.restore", "system", 0, "恢复数据库备份", "恢复前安全备份："+filepath.Base(safetyPath))
 	writeJSON(w, http.StatusOK, map[string]any{

@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-06
+
+### Added
+
+- 教师后台支持上传单 HTML、完整项目文件夹或 ZIP 教学网页，并在学生导航中直接发布。
+- 教学网页支持查看、改名、排序、替换版本和删除；压缩源纳入 SQLite 备份，静态缓存可自动重建。
+
+### Security
+
+- 上传项目会校验路径、文件数量及解压大小，并通过无同源权限的浏览器沙箱运行。
+
 ## [1.5.2] - 2026-09-02
 
 ### Fixed
@@ -66,7 +77,8 @@
 - 教师 API 与学生公开 API 隔离，密码使用 bcrypt 存储，登录会话只保存 Token 哈希。
 - npm 依赖审计在发布时无已知漏洞。
 
-[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.5.2...HEAD
+[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.6.0
 [1.5.2]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.5.2
 [1.5.1]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.5.1
 [1.5.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.5.0

@@ -72,7 +72,8 @@ export type AttendanceSuggestion = {
 export type Dashboard = { classCount: number; studentCount: number; totalScore: number; activeSessions: number }
 
 export type SiteSettings = { title: string; subtitle: string }
-export type NavigationItem = { id: number; title: string; url: string; iconUrl: string | null; sortOrder: number }
+export type TeachingSiteSummary = { publicId: string; revision: string; sourceName: string; sourceSize: number; extractedSize: number; fileCount: number; updatedAt: string }
+export type NavigationItem = { id: number; kind: 'external' | 'site'; title: string; url: string; iconUrl: string | null; sortOrder: number; site?: TeachingSiteSummary }
 export type Notify = (message: string, kind?: 'success' | 'error') => void
 export type AuditLog = {
   id: number

@@ -32,6 +32,9 @@ type server struct {
 	public           fs.FS
 	integrationToken string
 	maintenanceMu    sync.RWMutex
+	siteMu           sync.Mutex
+	siteAccessMu     sync.RWMutex
+	siteAccess       map[string]map[string]bool
 }
 
 const (
@@ -79,6 +82,12 @@ func main() {
 		db:               db,
 		public:           public,
 		integrationToken: strings.TrimSpace(os.Getenv("CLASS_SYSTEM_TOKEN")),
+	}
+	if err := s.refreshTeachingSiteRegistry(); err != nil {
+		log.Fatal(err)
+	}
+	if err := s.pruneSiteCache(); err != nil {
+		log.Printf("warning: teaching-site cache cleanup failed: %v", err)
 	}
 	defer func() { _ = s.db.Close() }()
 	stopBackups := s.startBackupScheduler()
@@ -149,6 +158,10 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/settings", s.updateSettings)
 	mux.HandleFunc("GET /api/navigation", s.getNavigation)
 	mux.HandleFunc("PUT /api/navigation", s.updateNavigation)
+	mux.HandleFunc("POST /api/navigation/sites", s.createTeachingSite)
+	mux.HandleFunc("GET /api/navigation/sites/{id}", s.getTeachingSite)
+	mux.HandleFunc("PUT /api/navigation/sites/{id}", s.updateTeachingSite)
+	mux.HandleFunc("DELETE /api/navigation/sites/{id}", s.deleteTeachingSite)
 	mux.HandleFunc("GET /api/classes", s.getClasses)
 	mux.HandleFunc("POST /api/classes", s.createClass)
 	mux.HandleFunc("PATCH /api/classes/{id}", s.updateClass)
@@ -188,6 +201,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/backup", s.downloadBackup)
 	mux.HandleFunc("POST /api/admin/restore", s.restoreBackup)
 	mux.HandleFunc("GET /api/admin/reports", s.exportReport)
+	mux.HandleFunc("GET /published/{site}/{revision}/{path...}", s.serveTeachingSite)
 
 	assets := http.FileServer(http.FS(s.public))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -574,6 +588,11 @@ func (s *server) getPublicNavigation(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *server) updateNavigation(w http.ResponseWriter, r *http.Request) {
+	before, err := s.db.navigation()
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
 	var in navigationBatchInput
 	if !decode(w, r, &in) {
 		return
@@ -587,12 +606,39 @@ func (s *server) updateNavigation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for index := range in.Items {
-		if message := validateNavigationLink(&in.Items[index]); message != "" {
+		item := &in.Items[index]
+		if item.Kind == "site" && item.ID > 0 {
+			item.Title, item.IconURL = strings.TrimSpace(item.Title), strings.TrimSpace(item.IconURL)
+			if item.Title == "" || len([]rune(item.Title)) > 50 {
+				badRequest(w, fmt.Sprintf("第 %d 个网站：教学网页标题不能为空且不能超过 50 个字符", index+1))
+				return
+			}
+			if len(item.IconURL) > 2048 || (item.IconURL != "" && !validWebURL(item.IconURL)) {
+				badRequest(w, fmt.Sprintf("第 %d 个网站：网站图标须为有效的 http 或 https 地址", index+1))
+				return
+			}
+			continue
+		}
+		if message := validateNavigationLink(item); message != "" {
 			badRequest(w, fmt.Sprintf("第 %d 个网站：%s", index+1, message))
 			return
 		}
 	}
 	data, err := s.db.replaceNavigation(in.Items)
+	if err == nil {
+		remaining := map[string]bool{}
+		for _, item := range data {
+			if item.Site != nil {
+				remaining[item.Site.PublicID] = true
+			}
+		}
+		for _, item := range before {
+			if item.Site != nil && !remaining[item.Site.PublicID] {
+				s.removeSiteAccess(item.Site.PublicID)
+				_ = os.RemoveAll(filepath.Join(s.siteCacheRoot(), item.Site.PublicID))
+			}
+		}
+	}
 	respond(w, data, err)
 }
 

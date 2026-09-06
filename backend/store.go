@@ -75,17 +75,31 @@ type teacherAccount struct {
 }
 
 type navigationLinkInput struct {
+	ID      int64  `json:"id,omitempty"`
+	Kind    string `json:"kind,omitempty"`
 	Title   string `json:"title"`
 	URL     string `json:"url"`
 	IconURL string `json:"iconUrl"`
 }
 
+type teachingSiteSummary struct {
+	PublicID      string `json:"publicId"`
+	Revision      string `json:"revision"`
+	SourceName    string `json:"sourceName"`
+	SourceSize    int64  `json:"sourceSize"`
+	ExtractedSize int64  `json:"extractedSize"`
+	FileCount     int    `json:"fileCount"`
+	UpdatedAt     string `json:"updatedAt"`
+}
+
 type navigationLink struct {
-	ID        int64  `json:"id"`
-	Title     string `json:"title"`
-	URL       string `json:"url"`
-	IconURL   string `json:"iconUrl"`
-	SortOrder int    `json:"sortOrder"`
+	ID        int64                `json:"id"`
+	Kind      string               `json:"kind"`
+	Title     string               `json:"title"`
+	URL       string               `json:"url"`
+	IconURL   string               `json:"iconUrl"`
+	SortOrder int                  `json:"sortOrder"`
+	Site      *teachingSiteSummary `json:"site,omitempty"`
 }
 
 type classRow struct {
@@ -265,6 +279,7 @@ CREATE TABLE IF NOT EXISTS teacher_sessions (
 CREATE INDEX IF NOT EXISTS idx_teacher_sessions_expires ON teacher_sessions(expires_at);
 CREATE TABLE IF NOT EXISTS navigation_links (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+	kind TEXT NOT NULL DEFAULT 'external' CHECK(kind IN ('external','site')),
   title TEXT NOT NULL,
   url TEXT NOT NULL,
   icon_url TEXT NOT NULL DEFAULT '',
@@ -1276,15 +1291,27 @@ func (s *store) deleteTeacherSession(tokenHash string) error {
 
 func (s *store) navigation() ([]navigationLink, error) {
 	items := []navigationLink{}
-	rows, err := s.Query(`SELECT id,title,url,icon_url,sort_order FROM navigation_links ORDER BY sort_order,id`)
+	rows, err := s.Query(`SELECT n.id,n.kind,n.title,n.url,n.icon_url,n.sort_order,
+		s.public_id,s.revision,s.source_name,s.source_size,s.extracted_size,s.file_count,s.updated_at
+		FROM navigation_links n
+		LEFT JOIN teaching_sites s ON s.navigation_id=n.id
+		ORDER BY n.sort_order,n.id`)
 	if err != nil {
 		return items, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var item navigationLink
-		if err := rows.Scan(&item.ID, &item.Title, &item.URL, &item.IconURL, &item.SortOrder); err != nil {
+		var publicID, revision, sourceName, updatedAt sql.NullString
+		var sourceSize, extractedSize, fileCount sql.NullInt64
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.URL, &item.IconURL, &item.SortOrder,
+			&publicID, &revision, &sourceName, &sourceSize, &extractedSize, &fileCount, &updatedAt); err != nil {
 			return items, err
+		}
+		if item.Kind == "site" && publicID.Valid {
+			item.URL = fmt.Sprintf("/published/%s/%s/", publicID.String, revision.String)
+			item.Site = &teachingSiteSummary{PublicID: publicID.String, Revision: revision.String, SourceName: sourceName.String,
+				SourceSize: sourceSize.Int64, ExtractedSize: extractedSize.Int64, FileCount: int(fileCount.Int64), UpdatedAt: updatedAt.String}
 		}
 		items = append(items, item)
 	}
@@ -1297,20 +1324,62 @@ func (s *store) replaceNavigation(items []navigationLinkInput) ([]navigationLink
 		return nil, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM navigation_links`); err != nil {
-		return nil, err
-	}
-	statement, err := tx.Prepare(`INSERT INTO navigation_links(title,url,icon_url,sort_order) VALUES(?,?,?,?)`)
+	rows, err := tx.Query(`SELECT id,kind FROM navigation_links`)
 	if err != nil {
 		return nil, err
 	}
-	defer statement.Close()
+	existing := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var kind string
+		if err := rows.Scan(&id, &kind); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		existing[id] = kind
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	// Move existing rows out of the final sort range before reconciling IDs.
+	if _, err := tx.Exec(`UPDATE navigation_links SET sort_order=sort_order+1000`); err != nil {
+		return nil, err
+	}
+	kept := map[int64]bool{}
 	for index, item := range items {
-		if _, err := statement.Exec(item.Title, item.URL, item.IconURL, index); err != nil {
+		if item.ID == 0 {
+			if item.Kind != "" && item.Kind != "external" {
+				return nil, fmt.Errorf("%w: 教学网页必须通过上传接口创建", errConflict)
+			}
+			if _, err := tx.Exec(`INSERT INTO navigation_links(kind,title,url,icon_url,sort_order) VALUES('external',?,?,?,?)`, item.Title, item.URL, item.IconURL, index); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		kind, ok := existing[item.ID]
+		if !ok || kept[item.ID] {
+			return nil, fmt.Errorf("%w: 导航项目不存在或重复", errConflict)
+		}
+		if item.Kind != "" && item.Kind != kind {
+			return nil, fmt.Errorf("%w: 导航项目类型不能更改", errConflict)
+		}
+		kept[item.ID] = true
+		url := item.URL
+		if kind == "site" {
+			url = ""
+		}
+		if _, err := tx.Exec(`UPDATE navigation_links SET title=?,url=?,icon_url=?,sort_order=? WHERE id=?`, item.Title, url, item.IconURL, index, item.ID); err != nil {
 			return nil, err
 		}
 	}
-	if err := statement.Close(); err != nil {
+	for id := range existing {
+		if !kept[id] {
+			if _, err := tx.Exec(`DELETE FROM navigation_links WHERE id=?`, id); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err := addAudit(tx, "navigation.update", "navigation", 0, "更新学生导航", fmt.Sprintf("共 %d 个项目", len(items))); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

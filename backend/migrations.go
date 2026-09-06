@@ -21,7 +21,10 @@ func (s *store) applyVersionedMigrations() error {
 		return err
 	}
 
-	migrations := []schemaMigration{{version: 1, apply: migrateOperationalSafety}}
+	migrations := []schemaMigration{
+		{version: 1, apply: migrateOperationalSafety},
+		{version: 2, apply: migrateTeachingSites},
+	}
 	for _, migration := range migrations {
 		var applied bool
 		if err := s.QueryRow(`SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=?)`, migration.version).Scan(&applied); err != nil {
@@ -47,6 +50,34 @@ func (s *store) applyVersionedMigrations() error {
 		}
 	}
 	return nil
+}
+
+func migrateTeachingSites(tx *sql.Tx) error {
+	exists, err := migrationColumnExists(tx, "navigation_links", "kind")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := tx.Exec(`ALTER TABLE navigation_links ADD COLUMN kind TEXT NOT NULL DEFAULT 'external' CHECK(kind IN ('external','site'))`); err != nil {
+			return err
+		}
+	}
+	_, err = tx.Exec(`
+		CREATE TABLE IF NOT EXISTS teaching_sites (
+			navigation_id INTEGER PRIMARY KEY REFERENCES navigation_links(id) ON DELETE CASCADE,
+			public_id TEXT NOT NULL UNIQUE,
+			revision TEXT NOT NULL,
+			source_name TEXT NOT NULL,
+			source_size INTEGER NOT NULL,
+			extracted_size INTEGER NOT NULL,
+			file_count INTEGER NOT NULL,
+			archive BLOB NOT NULL,
+			created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+			updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+		);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_teaching_sites_public ON teaching_sites(public_id);
+	`)
+	return err
 }
 
 func migrateOperationalSafety(tx *sql.Tx) error {

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS frontend-build
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-build
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 WORKDIR /src/frontend
@@ -9,21 +9,23 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM golang:1.24-alpine AS backend-build
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS backend-build
 ARG GOPROXY=https://goproxy.cn,direct
 ARG APP_VERSION=dev
 ARG VCS_REF=unknown
+ARG TARGETOS
+ARG TARGETARCH
 ENV GOPROXY=${GOPROXY}
 WORKDIR /src
 COPY go.mod go.sum ./
-COPY VERSION ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY VERSION ./
 COPY backend/ ./backend/
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     RESOLVED_VERSION="${APP_VERSION}"; \
     if [ "${RESOLVED_VERSION}" = "dev" ]; then RESOLVED_VERSION="$(tr -d '\r\n' < VERSION)"; fi; \
-    CGO_ENABLED=0 go build -trimpath \
+    CGO_ENABLED=0 GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" go build -trimpath \
     -ldflags="-s -w -X main.appVersion=${RESOLVED_VERSION} -X main.buildCommit=${VCS_REF}" \
     -o /out/classorbit ./backend
 

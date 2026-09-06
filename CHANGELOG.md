@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-09-06
+
+### Added
+
+- 教师后台侧栏及全站页脚显示当前后端实际运行的版本号和构建提交，便于确认部署版本。
+
+### Changed
+
+- 统一学生导航预览与添加按钮的高度和视觉比例，并让品牌名称设置卡片与下方系统设置区域等宽。
+- 容器发布改为仅由版本 Tag 或手动工作流触发；前端与 Go 编译在 Runner 原生架构执行，Go 使用目标架构交叉编译，并稳定共享 Buildx 缓存以缩短多架构构建时间。
+
 ## [1.6.0] - 2026-09-06
 
 ### Added
@@ -77,7 +88,8 @@
 - 教师 API 与学生公开 API 隔离，密码使用 bcrypt 存储，登录会话只保存 Token 哈希。
 - npm 依赖审计在发布时无已知漏洞。
 
-[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.6.1
 [1.6.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.6.0
 [1.5.2]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.5.2
 [1.5.1]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.5.1

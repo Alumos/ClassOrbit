@@ -45,6 +45,7 @@ a { color: inherit; text-decoration: none; }
 .main-nav button.active { color: #18181b; background: #e9e9eb; font-weight: 600; }
 .nav-chevron { margin-left: auto; }
 .sidebar-footer { margin: 10px; padding: 10px; border-top: 1px solid var(--border); display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 9px; }
+.sidebar-version { min-height: 24px; margin: 0 14px 2px; justify-content: center; }
 .teacher-avatar { width: 30px; height: 30px; border-radius: 50%; background: #e4e4e7; display: grid; place-items: center; font-size: 12px; font-weight: 600; }
 .sidebar-footer > div:nth-child(2) { display: flex; flex-direction: column; min-width: 0; }
 .sidebar-footer strong { font-size: 12px; }
@@ -117,6 +118,7 @@ td strong { color: #27272a; font-weight: 550; }
 .table-link { padding: 0; border: 0; background: none; display: inline-flex; align-items: center; gap: 9px; cursor: pointer; }
 .class-icon { width: 27px; height: 27px; border-radius: 6px; background: #f4f4f5; display: grid; place-items: center; }
 .row-actions { display: flex; justify-content: flex-end; gap: 3px; }
+.panel-header-actions { gap: 7px; }
 .mono { font-variant-numeric: tabular-nums; }
 .score-negative { color: #dc2626; }
 .status { padding: 3px 7px; border-radius: 999px; background: #f4f4f5; color: #71717a; font-size: 10px; font-weight: 550; }
@@ -333,8 +335,8 @@ td strong { color: #27272a; font-weight: 550; }
 .login-error { margin: -4px 0 0; }
 .setup-panel { width: min(410px, 100%); }
 .setup-kicker { margin-bottom: 4px; color: #15803d; display: block; font-size: 10px; font-weight: 650; }
-.settings-panel { max-width: 760px; }
-.settings-form { padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 28px; }
+.settings-panel { max-width: 1100px; }
+.settings-form { padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 28px; }
 .brand-preview { min-height: 148px; padding: 16px; border: 1px solid var(--border); border-radius: 7px; background: #fafafa; }
 .brand-preview > span { color: #a1a1aa; font-size: 9px; }
 .brand-preview > div { margin-top: 24px; display: flex; align-items: center; gap: 10px; }
@@ -403,6 +405,9 @@ td strong { color: #27272a; font-weight: 550; }
 .site-footer { width: 100%; min-height: 48px; padding: 10px 20px; color: #a1a1aa; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; line-height: 18px; text-align: center; }
 .site-footer a { color: #71717a; text-decoration: none; }
 .site-footer a:hover { color: #18181b; text-decoration: underline; text-underline-offset: 3px; }
+.deployment-version { color: #a1a1aa; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.deployment-version strong { color: #71717a; font-weight: 600; }
+.deployment-version code { padding-left: 5px; border-left: 1px solid #d4d4d8; color: #a1a1aa; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
 
 .navigation-shell { width: min(1120px, calc(100% - 28px)); }
 .navigation-panel { border: 0; background: transparent; box-shadow: none; overflow: visible; }
@@ -604,6 +609,9 @@ td { height: 43px; padding: 6px 12px; }
   .attendance-summary { grid-template-columns: 1fr 1fr; }.attendance-summary > div { padding: 11px; }.summary-session { grid-column: 1 / -1; }.attendance-summary > div:nth-child(3) { border-right: 0; }.attendance-summary .summary-session { border-top: 1px solid var(--border); }
   .checkin-header { padding: 0 14px; }.secure-note { display: none; }.checkin-shell { margin-top: 24px; }.checkin-fields { grid-template-columns: 1fr; }.name-grid { grid-template-columns: repeat(2, 1fr); padding: 10px; }.checkin-confirm { position: sticky; bottom: 0; }.checkin-result { min-height: 360px; }
   .navigation-shell { width: calc(100% - 20px); }.navigation-grid { grid-template-columns: 1fr; gap: 8px; }.navigation-card { height: 80px; padding: 11px; grid-template-columns: 42px minmax(0,1fr) 18px; gap: 10px; }.navigation-icon { width: 42px; height: 42px; }.navigation-icon img { width: 27px; height: 27px; }
+  .navigation-settings-panel .panel-header { align-items: flex-start; flex-direction: column; }
+  .navigation-settings-panel .panel-header-actions { width: 100%; }
+  .navigation-settings-panel .panel-header-actions > * { flex: 1; }
   .dialog-footer { position: sticky; bottom: 0; }
   .schedule-widget { right: 10px; bottom: 10px; width: calc(100vw - 20px); max-height: min(570px, calc(100vh - 82px)); }
   .schedule-fab { right: 12px; bottom: 12px; }

@@ -43,19 +43,22 @@ Pull Request 至少说明修改目的、数据迁移影响、验证方式和部�
 正式版本必须同时更新：
 
 1. 根目录 `VERSION`。
-2. `frontend/package.json` 和 `frontend/package-lock.json` 中的项目版本。
-3. `CHANGELOG.md`，把 `[Unreleased]` 内容整理到带日期的版本标题下。
+2. `CHANGELOG.md`，把 `[Unreleased]` 内容整理到带日期的版本标题下。
+
+`frontend/package.json` 和 `frontend/package-lock.json` 属于不单独发布的私有前端包，版本固定为 `0.0.0`。应用运行版本只读取根目录 `VERSION`，避免每次发布因无关的包版本变化使 Docker 依赖缓存失效。
 
 Tag 固定使用带 `v` 前缀的形式，例如 `v1.2.3`。发布检查会拒绝与 `VERSION` 不一致的 Tag。
 
 ## 发布步骤
 
 1. 从最新 `main` 创建 `chore/release-vX.Y.Z`。
-2. 更新三个版本位置和 `CHANGELOG.md`，运行 `make test && make release-check`。
+2. 更新 `VERSION` 和 `CHANGELOG.md`，运行 `make test && make release-check`。
 3. 合并发布提交到 `main`，确认主分支 Actions 通过。
 4. 创建带说明的 Tag：`git tag -a vX.Y.Z -m "ClassOrbit vX.Y.Z"`。
 5. 推送 Tag：`git push origin vX.Y.Z`。
-6. GitHub Actions 校验版本、运行测试、构建 `linux/amd64` 与 `linux/arm64` 镜像，并发布 GHCR 标签 `X.Y.Z`、`X.Y`、`sha-*`。
+6. GitHub Actions 校验版本、运行测试、构建 `linux/amd64` 与 `linux/arm64` 镜像，并发布 GHCR 标签 `latest`、`X.Y.Z`、`X.Y`、`sha-*`。
 7. 镜像发布成功后，Actions 自动创建同名 GitHub Release。
 
 不要移动或覆盖已经公开的版本 Tag。发布失败时修复代码并递增版本；只有从未成功公开的误操作 Tag 才可在团队确认后删除。
+
+推送 `main` 和提交 Pull Request 只运行测试，不再重复构建发布镜像；正式镜像由版本 Tag 触发，也可以在 Actions 页面手动运行工作流。

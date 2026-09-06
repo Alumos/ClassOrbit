@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { api } from './api'
 import { Select, SelectItem } from './select'
-import { Button, SiteFooter } from './ui'
+import { Button, DeploymentVersion, SiteFooter } from './ui'
 import type { AttendanceSuggestion, ClassItem, Dashboard, Notify, SiteSettings } from './types'
 
 const PointsPage = lazy(() => import('./pages/PointsPage').then(({ PointsPage }) => ({ default: PointsPage })))
@@ -72,6 +72,7 @@ export function TeacherApp({ username, settings, onSettingsChange, onLogout }: {
         <a href="/checkin" target="_blank" rel="noreferrer"><BookOpenCheck size={16} /><span>自助签到页</span></a>
         <a href="/navigation" target="_blank" rel="noreferrer"><Compass size={16} /><span>学习导航页</span></a>
       </nav>
+      <DeploymentVersion className="sidebar-version" />
       <div className="sidebar-footer"><div className="teacher-avatar">{username.slice(0, 1).toUpperCase() || '师'}</div><div><strong>{username || '教师账号'}</strong><span>{classes.length} 个班级</span></div><Button variant="ghost" size="icon" aria-label="退出登录" title="退出登录" onClick={() => void logout()}><LogOut size={15} /></Button></div>
     </aside>
     <main className="workspace">

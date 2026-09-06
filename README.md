@@ -2,7 +2,7 @@
 
 ClassOrbit（智创课堂）是面向小学信息科技教师的轻量班级积分、课堂考勤与课程导航系统。Go 单进程提供 API 并托管 React 前端，数据存放在本地 SQLite，适合教师电脑、校内局域网或小型服务器部署。
 
-当前稳定版本为 `v1.6.0`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+当前稳定版本为 `v1.6.1`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
 ## 已实现
 
@@ -63,13 +63,13 @@ Go 后端原先位于项目根目录的 `main.go` 和 `store.go`，并非缺少�
 
 1. 使用 Node.js 22 安装依赖，运行 Vitest/React Testing Library 测试并构建 React 前端。
 2. 使用 `go.mod` 指定的 Go 版本运行后端与 API 测试。
-3. 构建 `linux/amd64` 和 `linux/arm64` 多架构镜像。
+3. 在版本 Tag 或手动发布时构建 `linux/amd64` 和 `linux/arm64` 多架构镜像。
 4. 发布到 `ghcr.io/<GitHub 用户名或组织>/classorbit`。
 5. 为镜像附加 SBOM、构建来源以及版本标签。
 
-推送到 `main` 后会生成 `latest`、`main` 和 `sha-xxxxxxx` 标签；推送 `v1.2.3` 形式的 Git 标签还会生成 `1.2.3` 与 `1.2` 标签。Pull Request 只构建和测试，不发布镜像。
+推送到 `main` 和提交 Pull Request 只运行测试，不构建发布镜像。推送 `v1.2.3` 形式的 Git Tag 后会生成 `latest`、`1.2.3`、`1.2` 与 `sha-xxxxxxx` 标签；也可以从 Actions 页面手动触发发布。
 
-Tag 发布前，Actions 会校验根目录 `VERSION`、前端包版本、`CHANGELOG.md` 和 Git Tag 完全一致。版本镜像发布成功后会自动创建 GitHub Release。已经公开的版本 Tag 不应移动或覆盖。
+Tag 发布前，Actions 会校验根目录 `VERSION`、`CHANGELOG.md` 和 Git Tag 完全一致。`VERSION` 是唯一的应用版本来源，私有前端包固定使用 `0.0.0`。版本镜像发布成功后会自动创建 GitHub Release。已经公开的版本 Tag 不应移动或覆盖。
 
 首次发布后，在 GitHub 仓库的 Packages 页面把镜像设为 Public，即可在服务器上免登录拉取；如果保持 Private，需要先在服务器登录 GHCR。
 

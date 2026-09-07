@@ -119,6 +119,7 @@ func (l *requestLimiter) allow(key string, now time.Time) bool {
 
 func rateLimitPublic(next http.Handler) http.Handler {
 	login := newRequestLimiter(10, time.Minute)
+	qrLogin := newRequestLimiter(120, time.Minute)
 	// A whole classroom may share one NAT address, so leave enough burst room
 	// for concentrated check-ins while still bounding abusive retries.
 	checkin := newRequestLimiter(300, time.Minute)
@@ -128,6 +129,8 @@ func rateLimitPublic(next http.Handler) http.Handler {
 		switch {
 		case r.Method == http.MethodPost && (r.URL.Path == "/api/auth" || r.URL.Path == "/api/setup"):
 			limiter = login
+		case strings.HasPrefix(r.URL.Path, "/api/auth/qr/"):
+			limiter = qrLogin
 		case r.Method == http.MethodPost && r.URL.Path == "/api/public/check-in":
 			limiter = checkin
 		case r.URL.Path == "/api/integration/classes":

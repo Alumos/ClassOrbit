@@ -1,18 +1,19 @@
 import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
-import { BookOpenCheck, GraduationCap } from 'lucide-react'
+import { BookOpenCheck, GraduationCap, KeyRound, ScanLine } from 'lucide-react'
 import { api, json } from './api'
 import { Button, SiteFooter } from './ui'
-import type { SiteSettings } from './types'
+import type { AuthStatus, SiteSettings } from './types'
 
 const CheckInPage = lazy(() => import('./pages/CheckInPage').then(({ CheckInPage }) => ({ default: CheckInPage })))
 const StudentNavigationPage = lazy(() => import('./pages/StudentNavigationPage').then(({ StudentNavigationPage }) => ({ default: StudentNavigationPage })))
 const TeacherApp = lazy(() => import('./TeacherApp').then(({ TeacherApp }) => ({ default: TeacherApp })))
-
-type AuthStatus = { initialized: boolean; authenticated: boolean; username: string }
+const QRCodeLoginPanel = lazy(() => import('./QRCodeLogin').then(({ QRCodeLoginPanel }) => ({ default: QRCodeLoginPanel })))
+const QRLoginApprovalPage = lazy(() => import('./QRCodeLogin').then(({ QRLoginApprovalPage }) => ({ default: QRLoginApprovalPage })))
 
 export default function App() {
   if (window.location.pathname.startsWith('/checkin')) return <Suspense fallback={<Loading />}><CheckInPage /></Suspense>
   if (window.location.pathname.startsWith('/navigation')) return <Suspense fallback={<Loading />}><StudentNavigationPage /></Suspense>
+  if (window.location.pathname.startsWith('/qr-login')) return <Suspense fallback={<Loading />}><QRLoginApprovalPage /></Suspense>
   return <TeacherGate />
 }
 
@@ -44,13 +45,14 @@ function LoginPage({ settings, onLogin }: { settings: SiteSettings; onLogin: (au
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [method, setMethod] = useState<'password' | 'qr'>('password')
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError('')
     try { onLogin(await api<AuthStatus>('/auth', json('POST', { username: username.trim(), password }))) }
     catch (e) { setError((e as Error).message) }
     finally { setBusy(false) }
   }
-  return <main className="login-page"><form className="login-panel" onSubmit={submit}><span className="brand-mark login-mark"><GraduationCap size={21} /></span><div className="login-title"><h1>{settings.title}</h1><p>{settings.subtitle} · 教师后台</p></div><div className="form-stack"><label className="field"><span>教师账号</span><input className="input" autoFocus autoComplete="username" maxLength={32} value={username} onChange={e => setUsername(e.target.value)} placeholder="请输入账号" /></label><label className="field"><span>密码</span><input className="input" type="password" autoComplete="current-password" maxLength={72} value={password} onChange={e => setPassword(e.target.value)} placeholder="请输入密码" /></label></div>{error && <div className="form-error login-error" role="alert">{error}</div>}<Button type="submit" disabled={busy || !username.trim() || !password}>{busy ? '正在登录' : '登录'}</Button><a href="/checkin"><BookOpenCheck size={14} />前往学生自助签到</a></form><SiteFooter /></main>
+  return <main className="login-page"><form className="login-panel" onSubmit={method === 'password' ? submit : event => event.preventDefault()}><span className="brand-mark login-mark"><GraduationCap size={21} /></span><div className="login-title"><h1>{settings.title}</h1><p>{settings.subtitle} · 教师后台</p></div><div className="segment segment-full login-methods"><button type="button" className={method === 'password' ? 'active' : ''} onClick={() => setMethod('password')}><KeyRound size={14} />密码登录</button><button type="button" className={method === 'qr' ? 'active' : ''} onClick={() => setMethod('qr')}><ScanLine size={14} />扫码登录</button></div>{method === 'password' ? <><div className="form-stack"><label className="field"><span>教师账号</span><input className="input" autoFocus autoComplete="username" maxLength={32} value={username} onChange={e => setUsername(e.target.value)} placeholder="请输入账号" /></label><label className="field"><span>密码</span><input className="input" type="password" autoComplete="current-password" maxLength={72} value={password} onChange={e => setPassword(e.target.value)} placeholder="请输入密码" /></label></div>{error && <div className="form-error login-error" role="alert">{error}</div>}<Button type="submit" disabled={busy || !username.trim() || !password}>{busy ? '正在登录' : '登录'}</Button></> : <Suspense fallback={<div className="qr-code-frame qr-code-loading"><ScanLine size={34} /></div>}><QRCodeLoginPanel onLogin={onLogin} /></Suspense>}<a href="/checkin"><BookOpenCheck size={14} />前往学生自助签到</a></form><SiteFooter /></main>
 }
 
 function SetupPage({ settings, onSetup }: { settings: SiteSettings; onSetup: (auth: AuthStatus) => void }) {

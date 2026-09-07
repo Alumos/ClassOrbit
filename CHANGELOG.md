@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-07
+
+### Added
+
+- 教师登录页新增扫码登录：已登录手机扫码并确认后，电脑端自动以同一账号登录。
+- 手机尚未登录时，可在扫码确认页先验证教师账号，再决定是否授权电脑。
+
+### Security
+
+- 扫码登录使用 2 分钟有效的一次性令牌，数据库仅保存令牌哈希；电脑端获得独立的 HttpOnly 会话，不会复制手机登录态。
+
 ## [1.6.2] - 2026-09-07
 
 ### Fixed
@@ -98,7 +109,8 @@
 - 教师 API 与学生公开 API 隔离，密码使用 bcrypt 存储，登录会话只保存 Token 哈希。
 - npm 依赖审计在发布时无已知漏洞。
 
-[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.7.0
 [1.6.2]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.6.2
 [1.6.1]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.6.1
 [1.6.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.6.0

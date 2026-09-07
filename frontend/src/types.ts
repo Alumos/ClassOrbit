@@ -72,6 +72,7 @@ export type AttendanceSuggestion = {
 export type Dashboard = { classCount: number; studentCount: number; totalScore: number; activeSessions: number }
 
 export type SiteSettings = { title: string; subtitle: string }
+export type AuthStatus = { initialized: boolean; authenticated: boolean; username: string }
 export type BuildInfo = { version: string; commit: string }
 export type TeachingSiteSummary = { publicId: string; revision: string; sourceName: string; sourceSize: number; extractedSize: number; fileCount: number; updatedAt: string }
 export type NavigationItem = { id: number; kind: 'external' | 'site'; title: string; url: string; iconUrl: string | null; sortOrder: number; site?: TeachingSiteSummary }

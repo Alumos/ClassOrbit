@@ -1,10 +1,8 @@
 package main
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -152,6 +150,10 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/setup", s.setup)
 	mux.HandleFunc("POST /api/auth", s.login)
 	mux.HandleFunc("DELETE /api/auth", s.logout)
+	mux.HandleFunc("POST /api/auth/qr/start", s.startQRLogin)
+	mux.HandleFunc("GET /api/auth/qr/challenge", s.getQRLoginChallenge)
+	mux.HandleFunc("POST /api/auth/qr/status", s.getQRLoginStatus)
+	mux.HandleFunc("POST /api/auth/qr/decision", s.decideQRLogin)
 	mux.HandleFunc("PATCH /api/auth/password", s.changePassword)
 	mux.HandleFunc("GET /api/dashboard", s.getDashboard)
 	mux.HandleFunc("GET /api/settings", s.getSettings)
@@ -853,7 +855,7 @@ func (s *server) logout(w http.ResponseWriter, r *http.Request) {
 func (s *server) requireTeacher(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		isPublic := path == "/api/health" || path == "/api/auth" || path == "/api/setup" || strings.HasPrefix(path, "/api/public/") || path == "/api/integration/classes"
+		isPublic := path == "/api/health" || path == "/api/auth" || path == "/api/setup" || path == "/api/auth/qr/start" || path == "/api/auth/qr/challenge" || path == "/api/auth/qr/status" || strings.HasPrefix(path, "/api/public/") || path == "/api/integration/classes"
 		if strings.HasPrefix(path, "/api/") && !isPublic {
 			_, authenticated, err := s.authenticateTeacher(r)
 			if err != nil {
@@ -885,15 +887,19 @@ func (s *server) authenticateTeacher(r *http.Request) (string, bool, error) {
 }
 
 func (s *server) startTeacherSession(w http.ResponseWriter, r *http.Request) error {
-	value := make([]byte, 32)
-	if _, err := rand.Read(value); err != nil {
+	token, err := randomURLToken()
+	if err != nil {
 		return err
 	}
-	token := base64.RawURLEncoding.EncodeToString(value)
 	expiresAt := time.Now().Add(teacherSessionLifetime)
 	if err := s.db.createTeacherSession(hashSessionToken(token), expiresAt.Unix()); err != nil {
 		return err
 	}
+	setTeacherSessionCookie(w, r, token, expiresAt)
+	return nil
+}
+
+func setTeacherSessionCookie(w http.ResponseWriter, r *http.Request, token string, expiresAt time.Time) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     teacherSessionCookie,
 		Value:    token,
@@ -904,7 +910,6 @@ func (s *server) startTeacherSession(w http.ResponseWriter, r *http.Request) err
 		MaxAge:   int(teacherSessionLifetime.Seconds()),
 		Expires:  expiresAt,
 	})
-	return nil
 }
 
 func clearTeacherSessionCookie(w http.ResponseWriter, r *http.Request) {

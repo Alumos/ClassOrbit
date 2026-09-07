@@ -24,6 +24,7 @@ func (s *store) applyVersionedMigrations() error {
 	migrations := []schemaMigration{
 		{version: 1, apply: migrateOperationalSafety},
 		{version: 2, apply: migrateTeachingSites},
+		{version: 3, apply: migrateQRLogin},
 	}
 	for _, migration := range migrations {
 		var applied bool
@@ -50,6 +51,24 @@ func (s *store) applyVersionedMigrations() error {
 		}
 	}
 	return nil
+}
+
+func migrateQRLogin(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE IF NOT EXISTS teacher_qr_logins (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			scan_token_hash TEXT NOT NULL UNIQUE,
+			claim_token_hash TEXT NOT NULL UNIQUE,
+			device_name TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','scanned','approved','denied','consumed','expired')),
+			created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+			expires_at INTEGER NOT NULL,
+			approved_at INTEGER,
+			consumed_at INTEGER
+		);
+		CREATE INDEX IF NOT EXISTS idx_teacher_qr_logins_expires ON teacher_qr_logins(expires_at);
+	`)
+	return err
 }
 
 func migrateTeachingSites(tx *sql.Tx) error {

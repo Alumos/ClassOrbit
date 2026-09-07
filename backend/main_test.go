@@ -270,6 +270,66 @@ func TestTeacherSetupLoginAndSession(t *testing.T) {
 	}
 }
 
+func TestQRLoginRequiresPhoneConfirmationAndCreatesIndependentSession(t *testing.T) {
+	_, handler := testAPI(t)
+	setup := apiRequest(t, handler, http.MethodPost, "/api/setup", `{"username":"teacher","password":"strong-pass-123"}`, nil)
+	phoneCookie := responseCookie(t, setup)
+
+	start := apiRequest(t, handler, http.MethodPost, "/api/auth/qr/start", `{"deviceName":"Chrome · macOS"}`, nil)
+	if start.Code != http.StatusCreated {
+		t.Fatalf("start QR login = %d: %s", start.Code, start.Body.String())
+	}
+	var created struct {
+		Token      string `json:"token"`
+		ClaimToken string `json:"claimToken"`
+		ExpiresAt  int64  `json:"expiresAt"`
+	}
+	if err := json.Unmarshal(start.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if !validQRLoginToken(created.Token) || !validQRLoginToken(created.ClaimToken) || created.Token == created.ClaimToken || created.ExpiresAt == 0 {
+		t.Fatalf("created QR login = %+v", created)
+	}
+
+	challenge := apiRequest(t, handler, http.MethodGet, "/api/auth/qr/challenge?token="+created.Token, "", nil)
+	if challenge.Code != http.StatusOK || !strings.Contains(challenge.Body.String(), `"status":"scanned"`) || !strings.Contains(challenge.Body.String(), "Chrome · macOS") {
+		t.Fatalf("scan QR login = %d: %s", challenge.Code, challenge.Body.String())
+	}
+	statusBody := fmt.Sprintf(`{"token":%q}`, created.ClaimToken)
+	status := apiRequest(t, handler, http.MethodPost, "/api/auth/qr/status", statusBody, nil)
+	if status.Code != http.StatusOK || !strings.Contains(status.Body.String(), `"status":"scanned"`) || len(status.Result().Cookies()) != 0 {
+		t.Fatalf("unapproved QR status = %d: %s", status.Code, status.Body.String())
+	}
+
+	decisionBody := fmt.Sprintf(`{"token":%q,"approve":true}`, created.Token)
+	unauthorized := apiRequest(t, handler, http.MethodPost, "/api/auth/qr/decision", decisionBody, nil)
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated QR approval = %d", unauthorized.Code)
+	}
+	approved := apiRequest(t, handler, http.MethodPost, "/api/auth/qr/decision", decisionBody, phoneCookie)
+	if approved.Code != http.StatusOK || !strings.Contains(approved.Body.String(), `"status":"approved"`) {
+		t.Fatalf("approve QR login = %d: %s", approved.Code, approved.Body.String())
+	}
+
+	claimed := apiRequest(t, handler, http.MethodPost, "/api/auth/qr/status", statusBody, nil)
+	if claimed.Code != http.StatusOK || !strings.Contains(claimed.Body.String(), `"authenticated":true`) {
+		t.Fatalf("claim QR login = %d: %s", claimed.Code, claimed.Body.String())
+	}
+	computerCookie := responseCookie(t, claimed)
+	if computerCookie.Value == phoneCookie.Value || !computerCookie.HttpOnly || computerCookie.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("computer session is not independent and secure: %+v", computerCookie)
+	}
+	auth := apiRequest(t, handler, http.MethodGet, "/api/auth", "", computerCookie)
+	if auth.Code != http.StatusOK || !strings.Contains(auth.Body.String(), `"authenticated":true`) || !strings.Contains(auth.Body.String(), `"username":"teacher"`) {
+		t.Fatalf("QR-authenticated session = %d: %s", auth.Code, auth.Body.String())
+	}
+
+	reused := apiRequest(t, handler, http.MethodPost, "/api/auth/qr/status", statusBody, nil)
+	if reused.Code != http.StatusOK || !strings.Contains(reused.Body.String(), `"status":"consumed"`) || len(reused.Result().Cookies()) != 0 {
+		t.Fatalf("reused QR claim = %d: %s", reused.Code, reused.Body.String())
+	}
+}
+
 func TestTeacherEnvironmentBootstrapOnlyInitializesEmptyStore(t *testing.T) {
 	db := testStore(t)
 	t.Setenv("TEACHER_USERNAME", "deployed-teacher")

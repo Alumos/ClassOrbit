@@ -203,6 +203,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/backup", s.downloadBackup)
 	mux.HandleFunc("POST /api/admin/restore", s.restoreBackup)
 	mux.HandleFunc("GET /api/admin/reports", s.exportReport)
+	mux.HandleFunc("GET "+teachingSiteURLPrefix+"/{site}/{revision}/{path...}", s.serveTeachingSite)
 	mux.HandleFunc("GET /published/{site}/{revision}/{path...}", s.serveTeachingSite)
 
 	assets := http.FileServer(http.FS(s.public))

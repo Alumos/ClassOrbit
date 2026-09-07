@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-09-07
+
+### Fixed
+
+- 教学网页使用新的版本化发布路径，绕过 CDN 中仍缺少 `allow-same-origin` 的旧沙箱响应头，使 `localStorage` 在现有已上传网页中立即可用。
+- HTML 文档改为每次向服务端重新验证，防止 CDN 再次将过时的安全响应头锁定一年；内容哈希版本化的静态资源仍保留长期缓存。
+
 ## [1.7.0] - 2026-09-07
 
 ### Added
@@ -109,7 +116,8 @@
 - 教师 API 与学生公开 API 隔离，密码使用 bcrypt 存储，登录会话只保存 Token 哈希。
 - npm 依赖审计在发布时无已知漏洞。
 
-[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.7.1
 [1.7.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.7.0
 [1.6.2]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.6.2
 [1.6.1]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.6.1

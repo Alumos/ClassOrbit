@@ -20,11 +20,14 @@ import (
 )
 
 const (
-	maxSiteArchiveSize   = 32 << 20
-	maxSiteExtractedSize = 128 << 20
-	maxSiteRequestSize   = maxSiteExtractedSize + (4 << 20)
-	maxSiteFileCount     = 2000
-	maxSiteStoredSize    = 384 << 20
+	// Keep this path versioned so previously immutable CDN responses cannot
+	// preserve an outdated document sandbox policy after an application update.
+	teachingSiteURLPrefix = "/published-v2"
+	maxSiteArchiveSize    = 32 << 20
+	maxSiteExtractedSize  = 128 << 20
+	maxSiteRequestSize    = maxSiteExtractedSize + (4 << 20)
+	maxSiteFileCount      = 2000
+	maxSiteStoredSize     = 384 << 20
 )
 
 type preparedTeachingSite struct {
@@ -567,7 +570,14 @@ func (s *server) serveTeachingSite(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	// HTML carries the sandbox policy, so force CDNs to revalidate it instead
+	// of pinning response headers for a year. Content-addressed assets remain
+	// immutable and keep the long-lived cache benefit.
+	if isHTMLName(requested) {
+		w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	}
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
 	w.Header().Set("Content-Security-Policy", teachingSiteCSP)

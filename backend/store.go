@@ -1309,7 +1309,7 @@ func (s *store) navigation() ([]navigationLink, error) {
 			return items, err
 		}
 		if item.Kind == "site" && publicID.Valid {
-			item.URL = fmt.Sprintf("/published/%s/%s/", publicID.String, revision.String)
+			item.URL = fmt.Sprintf("%s/%s/%s/", teachingSiteURLPrefix, publicID.String, revision.String)
 			item.Site = &teachingSiteSummary{PublicID: publicID.String, Revision: revision.String, SourceName: sourceName.String,
 				SourceSize: sourceSize.Int64, ExtractedSize: extractedSize.Int64, FileCount: int(fileCount.Int64), UpdatedAt: updatedAt.String}
 		}

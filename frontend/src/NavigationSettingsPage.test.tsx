@@ -12,7 +12,7 @@ describe('NavigationSettingsPage teaching sites', () => {
       id: 21,
       kind: 'site',
       title: '二进制互动练习',
-      url: '/published/1234567890abcdef/abcdef1234567890/',
+      url: '/published-v2/1234567890abcdef/abcdef1234567890/',
       iconUrl: null,
       sortOrder: 0,
       site: { publicId: '1234567890abcdef', revision: 'abcdef1234567890', sourceName: 'binary-demo', sourceSize: 120, extractedSize: 120, fileCount: 2, updatedAt: '2026-09-06 10:00:00' },
@@ -41,7 +41,7 @@ describe('NavigationSettingsPage teaching sites', () => {
         const form = init.body as FormData
         expect(form.get('mode')).toBe('html')
         expect((form.get('files') as File).name).toBe('new-version.html')
-        items = [{ ...items[0], url: '/published/1234567890abcdef/fedcba0987654321/', site: { ...created.site!, revision: 'fedcba0987654321', sourceName: 'new-version.html' } }]
+        items = [{ ...items[0], url: '/published-v2/1234567890abcdef/fedcba0987654321/', site: { ...created.site!, revision: 'fedcba0987654321', sourceName: 'new-version.html' } }]
         return new Response(JSON.stringify(items[0]), { status: 200 })
       }
       if (requestPath === '/api/navigation/sites/21' && init?.method === 'DELETE') {

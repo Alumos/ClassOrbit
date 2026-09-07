@@ -617,6 +617,9 @@ func TestTeachingSiteCRUDDirectoryZIPAndConcurrentServing(t *testing.T) {
 	if created.Kind != "site" || created.Site == nil || created.Site.FileCount != 3 || created.Site.ExtractedSize == 0 || created.URL == "" {
 		t.Fatalf("created teaching site = %+v", created)
 	}
+	if !strings.HasPrefix(created.URL, "/published-v2/") {
+		t.Fatalf("teaching site URL does not carry the delivery policy version: %q", created.URL)
+	}
 
 	response = apiRequest(t, handler, http.MethodGet, fmt.Sprintf("/api/navigation/sites/%d", created.ID), "", cookie)
 	if response.Code != http.StatusOK {
@@ -645,6 +648,9 @@ func TestTeachingSiteCRUDDirectoryZIPAndConcurrentServing(t *testing.T) {
 			if csp := result.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox") || !strings.Contains(csp, "allow-same-origin") {
 				errorsFound <- "teaching page does not allow same-origin storage"
 			}
+			if cacheControl := result.Header().Get("Cache-Control"); cacheControl != "public, max-age=0, must-revalidate" {
+				errorsFound <- "teaching HTML can retain stale sandbox headers in a CDN"
+			}
 		}()
 	}
 	wait.Wait()
@@ -655,6 +661,9 @@ func TestTeachingSiteCRUDDirectoryZIPAndConcurrentServing(t *testing.T) {
 	response = apiRequest(t, handler, http.MethodGet, created.URL+"assets/style.css", "", nil)
 	if response.Code != http.StatusOK || response.Body.String() != "h1{color:green}" {
 		t.Fatalf("nested teaching-site asset = %d: %q", response.Code, response.Body.String())
+	}
+	if cacheControl := response.Header().Get("Cache-Control"); cacheControl != "public, max-age=31536000, immutable" {
+		t.Fatalf("teaching-site asset cache policy = %q", cacheControl)
 	}
 
 	updateBody := fmt.Sprintf(`{"items":[{"id":%d,"kind":"site","title":"更新后的练习","url":"javascript:ignored","iconUrl":""},{"kind":"external","title":"示例","url":"https://example.com/","iconUrl":""}]}`, created.ID)

@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-09-07
+
+### Fixed
+
+- 教学网页沙箱允许同源存储，使依赖 `localStorage` 的互动网页能够保存闯关进度并正常完成流程。
+
+### Security
+
+- 上传界面明确提示教学网页与后台同源运行，仅应发布完全可信的静态项目。
+
 ## [1.6.1] - 2026-09-06
 
 ### Added
@@ -88,7 +98,8 @@
 - 教师 API 与学生公开 API 隔离，密码使用 bcrypt 存储，登录会话只保存 Token 哈希。
 - npm 依赖审计在发布时无已知漏洞。
 
-[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.6.1...HEAD
+[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.6.2
 [1.6.1]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.6.1
 [1.6.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.6.0
 [1.5.2]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.5.2

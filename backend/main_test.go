@@ -582,8 +582,8 @@ func TestTeachingSiteCRUDDirectoryZIPAndConcurrentServing(t *testing.T) {
 			if result.Code != http.StatusOK || !bytes.Contains(result.Body.Bytes(), []byte("二进制练习")) {
 				errorsFound <- fmt.Sprintf("status=%d body=%q", result.Code, result.Body.String())
 			}
-			if csp := result.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox") || strings.Contains(csp, "allow-same-origin") {
-				errorsFound <- "teaching page is not origin-isolated"
+			if csp := result.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox") || !strings.Contains(csp, "allow-same-origin") {
+				errorsFound <- "teaching page does not allow same-origin storage"
 			}
 		}()
 	}

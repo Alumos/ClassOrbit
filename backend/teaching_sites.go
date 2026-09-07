@@ -661,7 +661,7 @@ func (s *server) pruneSiteCache() error {
 	return nil
 }
 
-const teachingSiteCSP = "sandbox allow-scripts allow-forms allow-modals allow-downloads allow-popups; default-src * data: blob:; script-src * data: blob: 'unsafe-inline' 'unsafe-eval'; style-src * data: blob: 'unsafe-inline'; img-src * data: blob:; media-src * data: blob:; font-src * data: blob:; connect-src * data: blob:; frame-src * data: blob:; object-src 'none'; form-action 'none'"
+const teachingSiteCSP = "sandbox allow-scripts allow-same-origin allow-forms allow-modals allow-downloads allow-popups; default-src * data: blob:; script-src * data: blob: 'unsafe-inline' 'unsafe-eval'; style-src * data: blob: 'unsafe-inline'; img-src * data: blob:; media-src * data: blob:; font-src * data: blob:; connect-src * data: blob:; frame-src * data: blob:; object-src 'none'; form-action 'none'"
 
 func validSiteToken(value string) bool {
 	if len(value) < 16 || len(value) > 64 {

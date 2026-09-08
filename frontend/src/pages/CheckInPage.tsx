@@ -3,16 +3,14 @@ import { ArrowRight, BookOpenCheck, CheckCircle2, GraduationCap, Search, ShieldC
 import { api, json } from '../api'
 import { Select, SelectItem } from '../select'
 import { Button, EmptyState, Input, SiteFooter } from '../ui'
-import type { ClassItem, SiteSettings } from '../types'
+import type { ClassItem, PublicRoster, PublicStudent, SiteSettings } from '../types'
 
-type PublicStudent = { id: number; studentNo: string; name: string; checkedIn: boolean }
-type Roster = { sessionId: number; title: string; course: string; sessionAt: string; students: PublicStudent[] }
 const NAVIGATION_COUNTDOWN_SECONDS = 5
 
 export function CheckInPage() {
   const [classes, setClasses] = useState<ClassItem[]>([])
   const [classId, setClassId] = useState(0)
-  const [roster, setRoster] = useState<Roster | null>(null)
+  const [roster, setRoster] = useState<PublicRoster | null>(null)
   const [rosterLoading, setRosterLoading] = useState(false)
   const [selected, setSelected] = useState<PublicStudent | null>(null)
   const [query, setQuery] = useState('')
@@ -34,7 +32,7 @@ export function CheckInPage() {
     const controller = new AbortController()
     let active = true
     setError(''); setSelected(null); setQuery(''); setRoster(null); setRosterLoading(true)
-    api<Roster>(`/public/classes/${classId}/students`, { signal: controller.signal }).then(next => { if (!active) return; setRoster(next); setRosterLoading(false) }).catch(e => { if (!active || e.name === 'AbortError') return; setRoster(null); setRosterLoading(false); setError(e.message) })
+    api<PublicRoster>(`/public/classes/${classId}/students`, { signal: controller.signal }).then(next => { if (!active) return; setRoster(next); setRosterLoading(false) }).catch(e => { if (!active || e.name === 'AbortError') return; setRoster(null); setRosterLoading(false); setError(e.message) })
     return () => { active = false; controller.abort() }
   }, [classId])
   useEffect(() => setPinyinIndex(new Map()), [roster?.sessionId])

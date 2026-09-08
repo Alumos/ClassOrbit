@@ -130,7 +130,7 @@ func (s *server) deleteTeachingSite(w http.ResponseWriter, r *http.Request) {
 	}
 	s.removeSiteAccess(publicID)
 	_ = os.RemoveAll(filepath.Join(s.siteCacheRoot(), publicID))
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, operationResponse{OK: true})
 }
 
 func (s *server) readTeachingSiteUpload(w http.ResponseWriter, r *http.Request) (string, string, *preparedTeachingSite, bool) {

@@ -12,16 +12,6 @@ import (
 
 const qrLoginLifetime = 2 * time.Minute
 
-type qrLoginRecord struct {
-	DeviceName string `json:"deviceName"`
-	Status     string `json:"status"`
-	ExpiresAt  int64  `json:"expiresAt"`
-}
-
-type qrLoginTokenInput struct {
-	Token string `json:"token"`
-}
-
 func randomURLToken() (string, error) {
 	value := make([]byte, 32)
 	if _, err := rand.Read(value); err != nil {
@@ -66,11 +56,7 @@ func (s *server) startQRLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"token":      scanToken,
-		"claimToken": claimToken,
-		"expiresAt":  expiresAt,
-	})
+	writeJSON(w, http.StatusCreated, qrLoginStartResponse{Token: scanToken, ClaimToken: claimToken, ExpiresAt: expiresAt})
 }
 
 func (s *server) getQRLoginChallenge(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +143,7 @@ func (s *server) getQRLoginStatus(w http.ResponseWriter, r *http.Request) {
 			respond(w, nil, accountErr)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"status": "authenticated", "authenticated": true, "username": account.Username})
+		writeJSON(w, http.StatusOK, qrAuthenticatedResponse{Status: "authenticated", Authenticated: true, Username: account.Username})
 		return
 	}
 	writeJSON(w, http.StatusOK, record)

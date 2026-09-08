@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import {
-  BarChart3, BookOpenCheck, Camera, CheckCircle2, ChevronRight, ClipboardCheck, GraduationCap,
+  BarChart3, BookOpenCheck, CheckCircle2, ChevronRight, ClipboardCheck, GraduationCap,
   Compass, LayoutDashboard, LogOut, Menu, PanelLeftClose, ScanLine, Settings2, Users, X,
 } from 'lucide-react'
 import { api } from './api'
@@ -74,15 +74,14 @@ export function TeacherApp({ username, settings, onSettingsChange, onLogout }: {
         <span className="nav-label nav-label-secondary">学生入口</span>
         <a href="/checkin" target="_blank" rel="noreferrer"><BookOpenCheck size={16} /><span>自助签到页</span></a>
         <a href="/navigation" target="_blank" rel="noreferrer"><Compass size={16} /><span>学习导航页</span></a>
-        <button onClick={() => setQRScannerOpen(true)}><ScanLine size={16} /><span>扫一扫登录电脑</span></button>
       </nav>
       <DeploymentVersion className="sidebar-version" />
-      <div className="sidebar-footer"><div className="teacher-avatar">{username.slice(0, 1).toUpperCase() || '师'}</div><div><strong>{username || '教师账号'}</strong><span>{classes.length} 个班级</span></div><Button variant="ghost" size="icon" aria-label="退出登录" title="退出登录" onClick={() => void logout()}><LogOut size={15} /></Button></div>
+      <div className="sidebar-footer"><div className="teacher-avatar">{username.slice(0, 1).toUpperCase() || '师'}</div><div><strong>{username || '教师账号'}</strong><span>{classes.length} 个班级</span></div><div className="sidebar-footer-actions"><Button variant="ghost" size="icon" aria-label="扫一扫登录电脑" title="扫一扫登录电脑" onClick={() => setQRScannerOpen(true)}><ScanLine size={15} /></Button><Button variant="ghost" size="icon" aria-label="退出登录" title="退出登录" onClick={() => void logout()}><LogOut size={15} /></Button></div></div>
     </aside>
     <main className="workspace">
       <header className="topbar">
         <div className="topbar-title"><Button className="mobile-menu" variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} aria-label="打开导航"><Menu size={18} /></Button><div><span>教师后台</span><strong>{nav.find(item => item.id === page)?.label}</strong></div></div>
-        <div className="topbar-actions"><Button variant="outline" size="sm" className="qr-scan-button" aria-label="扫一扫登录电脑" title="扫一扫登录电脑" onClick={() => setQRScannerOpen(true)}><Camera size={15} /><span>扫一扫</span></Button><Select value={classId ? String(classId) : undefined} onValueChange={value => setClassId(Number(value))} placeholder="选择班级" className="top-class-select">{classes.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</Select><a href="/checkin" target="_blank" rel="noreferrer" className="button button-outline button-sm"><BookOpenCheck size={15} />学生签到页</a></div>
+        <div className="topbar-actions"><Select value={classId ? String(classId) : undefined} onValueChange={value => setClassId(Number(value))} placeholder="选择班级" className="top-class-select">{classes.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</Select><a href="/checkin" target="_blank" rel="noreferrer" className="button button-outline button-sm"><BookOpenCheck size={15} />学生签到页</a></div>
       </header>
       <div className="page-wrap"><Suspense fallback={<div className="page-module-loading" aria-label="正在加载页面" />}>
         {page === 'points' && <PointsPage classes={classes} classId={classId} setClassId={setClassId} activeClass={activeClass} notify={notify} onScoreChange={updateClassScore} />}

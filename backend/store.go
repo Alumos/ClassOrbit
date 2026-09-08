@@ -19,189 +19,6 @@ type store struct {
 	path string
 }
 
-type classInput struct {
-	Name    string `json:"name"`
-	Grade   string `json:"grade"`
-	ClassNo string `json:"classNo"`
-}
-type studentInput struct {
-	StudentNo string `json:"studentNo"`
-	Name      string `json:"name"`
-}
-type scoreInput struct {
-	Delta  int    `json:"delta"`
-	Reason string `json:"reason"`
-}
-type attendanceInput struct {
-	ClassID   int64  `json:"classId"`
-	Title     string `json:"title"`
-	Course    string `json:"course"`
-	SessionAt string `json:"sessionAt"`
-}
-
-type scheduleInput struct {
-	ClassID      int64  `json:"classId"`
-	Course       string `json:"course"`
-	Weekday      int    `json:"weekday"`
-	Period       int    `json:"period"`
-	LocationOdd  string `json:"locationOdd"`
-	LocationEven string `json:"locationEven"`
-}
-
-type scheduleSettingsInput struct {
-	SemesterStart string           `json:"semesterStart"`
-	SemesterEnd   string           `json:"semesterEnd"`
-	Periods       []schedulePeriod `json:"periods"`
-}
-
-type scheduleChangeInput struct {
-	Date         string `json:"date"`
-	Status       string `json:"status"`
-	NewDate      string `json:"newDate"`
-	NewStartTime string `json:"newStartTime"`
-	NewEndTime   string `json:"newEndTime"`
-	NewClassID   int64  `json:"newClassId"`
-	Note         string `json:"note"`
-}
-
-type siteSettings struct {
-	Title    string `json:"title"`
-	Subtitle string `json:"subtitle"`
-}
-
-type teacherAccount struct {
-	Username     string
-	PasswordHash string
-}
-
-type navigationLinkInput struct {
-	ID      int64  `json:"id,omitempty"`
-	Kind    string `json:"kind,omitempty"`
-	Title   string `json:"title"`
-	URL     string `json:"url"`
-	IconURL string `json:"iconUrl"`
-}
-
-type teachingSiteSummary struct {
-	PublicID      string `json:"publicId"`
-	Revision      string `json:"revision"`
-	SourceName    string `json:"sourceName"`
-	SourceSize    int64  `json:"sourceSize"`
-	ExtractedSize int64  `json:"extractedSize"`
-	FileCount     int    `json:"fileCount"`
-	UpdatedAt     string `json:"updatedAt"`
-}
-
-type navigationLink struct {
-	ID        int64                `json:"id"`
-	Kind      string               `json:"kind"`
-	Title     string               `json:"title"`
-	URL       string               `json:"url"`
-	IconURL   string               `json:"iconUrl"`
-	SortOrder int                  `json:"sortOrder"`
-	Site      *teachingSiteSummary `json:"site,omitempty"`
-}
-
-type classRow struct {
-	ID              int64  `json:"id"`
-	Name            string `json:"name"`
-	Grade           string `json:"grade"`
-	ClassNo         string `json:"classNo"`
-	StudentCount    int    `json:"studentCount"`
-	TotalScore      int    `json:"totalScore"`
-	ActiveSessionID *int64 `json:"activeSessionId"`
-	CreatedAt       string `json:"createdAt"`
-}
-type studentRow struct {
-	ID        int64  `json:"id"`
-	ClassID   int64  `json:"classId"`
-	StudentNo string `json:"studentNo"`
-	Name      string `json:"name"`
-	Score     int    `json:"score"`
-	CreatedAt string `json:"createdAt"`
-}
-type scoreEvent struct {
-	ID         int64   `json:"id"`
-	Delta      int     `json:"delta"`
-	Reason     string  `json:"reason"`
-	ReversalOf *int64  `json:"reversalOf"`
-	ReversedAt *string `json:"reversedAt"`
-	Reversible bool    `json:"reversible"`
-	CreatedAt  string  `json:"createdAt"`
-}
-type attendanceRecord struct {
-	StudentID int64   `json:"studentId"`
-	StudentNo string  `json:"studentNo"`
-	Name      string  `json:"name"`
-	Status    string  `json:"status"`
-	CheckedAt *string `json:"checkedAt"`
-	Method    string  `json:"method"`
-}
-type attendanceView struct {
-	ID           int64              `json:"id"`
-	ClassID      int64              `json:"classId"`
-	ClassName    string             `json:"className"`
-	Title        string             `json:"title"`
-	Course       string             `json:"course"`
-	Status       string             `json:"status"`
-	StartedAt    string             `json:"startedAt"`
-	SessionAt    string             `json:"sessionAt"`
-	EndedAt      *string            `json:"endedAt"`
-	DeletedAt    *string            `json:"deletedAt"`
-	PresentCount int                `json:"presentCount"`
-	AbsentCount  int                `json:"absentCount"`
-	Records      []attendanceRecord `json:"records"`
-}
-
-type attendancePage struct {
-	Items      []attendanceView `json:"items"`
-	NextCursor int64            `json:"nextCursor"`
-}
-
-type scheduleLesson struct {
-	ID           int64  `json:"id"`
-	ClassID      int64  `json:"classId"`
-	ClassName    string `json:"className"`
-	Course       string `json:"course"`
-	Weekday      int    `json:"weekday"`
-	Period       int    `json:"period"`
-	StartTime    string `json:"startTime"`
-	EndTime      string `json:"endTime"`
-	LocationOdd  string `json:"locationOdd"`
-	LocationEven string `json:"locationEven"`
-}
-
-type schedulePeriod struct {
-	Period    int    `json:"period"`
-	StartTime string `json:"startTime"`
-	EndTime   string `json:"endTime"`
-}
-
-type scheduleSettings struct {
-	SemesterStart string           `json:"semesterStart"`
-	SemesterEnd   string           `json:"semesterEnd"`
-	Periods       []schedulePeriod `json:"periods"`
-}
-
-type scheduleChange struct {
-	ID           int64  `json:"id"`
-	LessonID     int64  `json:"lessonId"`
-	Date         string `json:"date"`
-	Status       string `json:"status"`
-	NewDate      string `json:"newDate"`
-	NewStartTime string `json:"newStartTime"`
-	NewEndTime   string `json:"newEndTime"`
-	NewClassID   int64  `json:"newClassId"`
-	NewClassName string `json:"newClassName"`
-	Note         string `json:"note"`
-}
-
-type scheduleData struct {
-	Lessons  []scheduleLesson `json:"lessons"`
-	Changes  []scheduleChange `json:"changes"`
-	Settings scheduleSettings `json:"settings"`
-}
-
 func openStore(path string) (*store, error) {
 	db, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
@@ -478,14 +295,14 @@ func (s *store) ensureColumn(table, column, ddl string) error {
 	return err
 }
 
-func (s *store) dashboard() (map[string]any, error) {
+func (s *store) dashboard() (dashboardResponse, error) {
 	var classes, students, score, active int
 	err := s.QueryRow(`SELECT
 (SELECT COUNT(*) FROM classes WHERE deleted_at IS NULL),
 (SELECT COUNT(*) FROM students WHERE deleted_at IS NULL),
 COALESCE((SELECT SUM(score) FROM students WHERE deleted_at IS NULL),0),
 (SELECT COUNT(*) FROM attendance_sessions WHERE status='active' AND deleted_at IS NULL)`).Scan(&classes, &students, &score, &active)
-	return map[string]any{"classCount": classes, "studentCount": students, "totalScore": score, "activeSessions": active}, err
+	return dashboardResponse{ClassCount: classes, StudentCount: students, TotalScore: score, ActiveSessions: active}, err
 }
 
 func (s *store) classes(publicOnly bool) ([]classRow, error) {
@@ -1117,36 +934,36 @@ WHERE a.id=attendance_records.session_id AND a.deleted_at IS NULL)`, status, che
 	}
 	return s.attendanceByID(sessionID)
 }
-func (s *store) publicStudents(classID int64) (map[string]any, error) {
+func (s *store) publicStudents(classID int64) (publicRoster, error) {
 	var sessionID int64
 	var className, course, sessionAt string
 	err := s.QueryRow(`SELECT a.id,COALESCE(NULLIF(a.class_name_snapshot,''),c.name),a.course,a.session_at
-FROM attendance_sessions a JOIN classes c ON c.id=a.class_id
+		FROM attendance_sessions a JOIN classes c ON c.id=a.class_id
 WHERE a.class_id=? AND a.status='active' AND a.deleted_at IS NULL AND c.deleted_at IS NULL`, classID).Scan(&sessionID, &className, &course, &sessionAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("%w: 该班当前没有开放签到", errConflict)
+		return publicRoster{}, fmt.Errorf("%w: 该班当前没有开放签到", errConflict)
 	}
 	if err != nil {
-		return nil, err
+		return publicRoster{}, err
 	}
 	rows, err := s.Query(`SELECT st.id,st.student_no,st.name,r.status
 FROM students st JOIN attendance_records r ON r.student_id=st.id AND r.session_id=?
 WHERE st.class_id=? AND st.deleted_at IS NULL
 ORDER BY CAST(st.student_no AS INTEGER),st.student_no`, sessionID, classID)
 	if err != nil {
-		return nil, err
+		return publicRoster{}, err
 	}
 	defer rows.Close()
-	students := []map[string]any{}
+	students := []publicStudent{}
 	for rows.Next() {
 		var id int64
 		var no, name, status string
 		if err := rows.Scan(&id, &no, &name, &status); err != nil {
-			return nil, err
+			return publicRoster{}, err
 		}
-		students = append(students, map[string]any{"id": id, "studentNo": no, "name": name, "checkedIn": status != "absent"})
+		students = append(students, publicStudent{ID: id, StudentNo: no, Name: name, CheckedIn: status != "absent"})
 	}
-	return map[string]any{"sessionId": sessionID, "title": attendanceTitleFromString(className, sessionAt), "course": course, "sessionAt": sessionAt, "students": students}, rows.Err()
+	return publicRoster{SessionID: sessionID, Title: attendanceTitleFromString(className, sessionAt), Course: course, SessionAt: sessionAt, Students: students}, rows.Err()
 }
 
 func attendanceTitle(className string, sessionTime time.Time) string {
@@ -1160,32 +977,32 @@ func attendanceTitleFromString(className, sessionAt string) string {
 	}
 	return attendanceTitle(className, value)
 }
-func (s *store) checkIn(classID, studentID int64) (map[string]any, error) {
+func (s *store) checkIn(classID, studentID int64) (checkInResponse, error) {
 	var sessionID int64
 	var name, status string
 	err := s.QueryRow(`SELECT a.id,st.name,r.status
 FROM attendance_sessions a JOIN attendance_records r ON r.session_id=a.id
 JOIN students st ON st.id=r.student_id
-WHERE a.class_id=? AND a.status='active' AND a.deleted_at IS NULL
+	WHERE a.class_id=? AND a.status='active' AND a.deleted_at IS NULL
 AND st.deleted_at IS NULL AND st.id=?`, classID, studentID).Scan(&sessionID, &name, &status)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("%w: 未找到开放签到或学生信息不匹配", errConflict)
+		return checkInResponse{}, fmt.Errorf("%w: 未找到开放签到或学生信息不匹配", errConflict)
 	}
 	if err != nil {
-		return nil, err
+		return checkInResponse{}, err
 	}
 	if status != "absent" {
-		return nil, fmt.Errorf("%w: %s 已完成签到，请勿重复提交", errConflict, name)
+		return checkInResponse{}, fmt.Errorf("%w: %s 已完成签到，请勿重复提交", errConflict, name)
 	}
 	res, err := s.Exec(`UPDATE attendance_records SET status='present',checked_at=datetime('now','localtime'),method='self' WHERE session_id=? AND student_id=? AND status='absent'`, sessionID, studentID)
 	if err != nil {
-		return nil, err
+		return checkInResponse{}, err
 	}
 	changed, _ := res.RowsAffected()
 	if changed == 0 {
-		return nil, fmt.Errorf("%w: %s 已完成签到，请勿重复提交", errConflict, name)
+		return checkInResponse{}, fmt.Errorf("%w: %s 已完成签到，请勿重复提交", errConflict, name)
 	}
-	return map[string]any{"ok": true, "name": name, "message": "签到成功"}, nil
+	return checkInResponse{OK: true, Name: name, Message: "签到成功"}, nil
 }
 
 func (s *store) settings() (siteSettings, error) {

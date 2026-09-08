@@ -51,7 +51,7 @@ func (s *server) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clearTeacherSessionCookie(w, r)
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, operationResponse{OK: true})
 }
 
 func (s *server) getAuditLogs(w http.ResponseWriter, r *http.Request) {
@@ -190,10 +190,10 @@ func (s *server) restoreBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = s.db.Exec(`DELETE FROM teacher_sessions`)
 	_ = addAudit(s.db, "backup.restore", "system", 0, "恢复数据库备份", "恢复前安全备份："+filepath.Base(safetyPath))
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":           true,
-		"safetyBackup": filepath.Base(safetyPath),
-		"message":      "恢复成功，请重新登录",
+	writeJSON(w, http.StatusOK, backupRestoreResponse{
+		OK:           true,
+		SafetyBackup: filepath.Base(safetyPath),
+		Message:      "恢复成功，请重新登录",
 	})
 }
 

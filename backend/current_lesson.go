@@ -7,20 +7,6 @@ import (
 	"time"
 )
 
-type attendanceSuggestion struct {
-	Detected   bool   `json:"detected"`
-	ServerTime string `json:"serverTime"`
-	ClassID    int64  `json:"classId"`
-	ClassName  string `json:"className"`
-	Course     string `json:"course"`
-	SessionAt  string `json:"sessionAt"`
-	Period     int    `json:"period"`
-	StartTime  string `json:"startTime"`
-	EndTime    string `json:"endTime"`
-	Source     string `json:"source"`
-	Message    string `json:"message"`
-}
-
 func (s *server) getCurrentLesson(w http.ResponseWriter, _ *http.Request) {
 	result, err := s.db.currentLesson(time.Now())
 	respond(w, result, err)

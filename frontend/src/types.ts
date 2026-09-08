@@ -1,3 +1,7 @@
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'leave'
+export type NavigationKind = 'external' | 'site'
+export type ScheduleChangeStatus = 'occupied' | 'rescheduled'
+
 export type ClassItem = {
   id: number
   name: string
@@ -32,7 +36,7 @@ export type AttendanceRecord = {
   studentId: number
   studentNo: string
   name: string
-  status: 'present' | 'absent' | 'late' | 'leave'
+  status: AttendanceStatus
   checkedAt: string | null
   method: string
 }
@@ -74,8 +78,10 @@ export type Dashboard = { classCount: number; studentCount: number; totalScore: 
 export type SiteSettings = { title: string; subtitle: string }
 export type AuthStatus = { initialized: boolean; authenticated: boolean; username: string }
 export type BuildInfo = { version: string; commit: string }
+export type PublicStudent = { id: number; studentNo: string; name: string; checkedIn: boolean }
+export type PublicRoster = { sessionId: number; title: string; course: string; sessionAt: string; students: PublicStudent[] }
 export type TeachingSiteSummary = { publicId: string; revision: string; sourceName: string; sourceSize: number; extractedSize: number; fileCount: number; updatedAt: string }
-export type NavigationItem = { id: number; kind: 'external' | 'site'; title: string; url: string; iconUrl: string | null; sortOrder: number; site?: TeachingSiteSummary }
+export type NavigationItem = { id: number; kind: NavigationKind; title: string; url: string; iconUrl: string | null; sortOrder: number; site?: TeachingSiteSummary }
 export type Notify = (message: string, kind?: 'success' | 'error') => void
 export type AuditLog = {
   id: number
@@ -108,7 +114,7 @@ export type ScheduleChange = {
   id: number
   lessonId: number
   date: string
-  status: 'occupied' | 'rescheduled'
+  status: ScheduleChangeStatus
   newDate: string
   newStartTime: string
   newEndTime: string

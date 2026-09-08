@@ -43,7 +43,12 @@ ClassOrbit（智创课堂）是面向小学信息科技教师的轻量班级积�
 classorbit/
 ├── .github/workflows/      # 自动测试与 GHCR 镜像发布
 ├── backend/                # Go API、SQLite 数据层、迁移与测试
-├── docs/                   # 对外接口和改进路线文档
+│   ├── models.go           # JSON 请求/响应模型目录，维护跨层数据结构
+│   ├── migrations.go       # 追加式数据库迁移
+│   └── ...                 # 按领域拆分的 HTTP、存储和运维模块
+├── docs/                   # API、集成协议和改进路线文档
+│   ├── api.md              # 全部 HTTP 接口快速索引
+│   └── integration-classes-api.md
 ├── frontend/               # React、Radix UI 前端
 ├── VERSION                 # 单一应用版本号来源
 ├── CHANGELOG.md            # 按 SemVer 维护的发布记录
@@ -56,6 +61,16 @@ classorbit/
 ```
 
 Go 后端原先位于项目根目录的 `main.go` 和 `store.go`，并非缺少后端。本次已迁入 `backend/`，目录边界更加清晰。生产环境仍然只有一个 Go 进程：同时提供 API 和前端静态文件。
+
+### 阅读代码的建议顺序
+
+1. 先看 [`docs/api.md`](docs/api.md) 了解鉴权边界、路由和 JSON 契约。
+2. 再看 [`backend/models.go`](backend/models.go) 与 [`frontend/src/types.ts`](frontend/src/types.ts) 对照前后端数据结构。
+3. `backend/main.go` 负责启动、路由、鉴权和轻量请求校验；领域 HTTP 逻辑位于 `admin_http.go`、`qr_login.go`、`teaching_sites.go` 等文件。
+4. `backend/store.go` 负责 SQLite 查询与事务，`migrations.go` 只放追加式迁移；不要在 handler 中直接写业务 SQL。
+5. 前端页面位于 `frontend/src/pages/`，公共请求封装在 `frontend/src/api.ts`，公共控件和版式在 `ui.tsx`、`styles.css`。
+
+跨层 JSON 字段变更必须同步更新 `backend/models.go`、`frontend/src/types.ts`、`docs/api.md` 和对应测试。这样后续维护者可以从接口文档追到模型，再追到 handler 和事务实现。
 
 数据使用单个 SQLite 文件。积分变更、签到和名单级联需要事务一致性，拆分多个 SQLite 会增加跨库失败风险，因此保留单库并使用 WAL、外键和索引。考勤列表已优化为固定两次查询，避免随场次数增长产生 N+1 查询。
 

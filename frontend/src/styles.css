@@ -50,7 +50,9 @@ a { color: inherit; text-decoration: none; }
 .sidebar-footer > div:nth-child(2) { display: flex; flex-direction: column; min-width: 0; }
 .sidebar-footer strong { font-size: 12px; }
 .sidebar-footer span { color: var(--muted); font-size: 10px; }
-.sidebar-footer > svg { color: #a1a1aa; }
+.sidebar-footer-actions { display: flex; align-items: center; gap: 1px; }
+.sidebar-footer-actions .button { color: #a1a1aa; }
+.sidebar-footer-actions .button:hover { color: #18181b; }
 
 .workspace { min-height: 100vh; margin-left: 224px; display: flex; flex-direction: column; }
 .topbar { position: sticky; top: 0; z-index: 20; height: 64px; padding: 0 28px; background: rgba(255,255,255,.93); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
@@ -637,7 +639,7 @@ td { height: 43px; padding: 6px 12px; }
   .schedule-calendar-bar { align-items: flex-start; flex-direction: column; }.schedule-calendar-bar > div:last-child { width: 100%; }.schedule-calendar-bar > div:last-child .button { flex: 1; }
   .schedule-config-dates { grid-template-columns: 1fr 1fr; }.schedule-config-dates > div:first-child { grid-column: 1 / -1; }
   .schedule-period-settings { grid-template-columns: 1fr; }.schedule-period-settings > div:first-child { grid-row: auto; margin-bottom: 3px; }
-  .qr-scan-button { width: 36px; min-width: 36px; padding: 0; }.qr-scan-button span { display: none; }.qr-scan-backdrop { padding: 10px; }.qr-scan-dialog { padding: 14px; }
+  .qr-scan-backdrop { padding: 10px; }.qr-scan-dialog { padding: 14px; }
   .schedule-form-actions { flex-wrap: wrap; }.schedule-form-actions > span { display: none; }.schedule-form-actions .button { flex: 1; }.schedule-form-actions .button-danger { flex-basis: 100%; }
   .heading-actions { flex-wrap: wrap; justify-content: flex-end; }.heading-actions .button { flex: 1; }
   .settings-grid { grid-template-columns: 1fr; }.report-controls { align-items: stretch; flex-direction: column; }.report-controls .select-trigger, .report-controls .input, .report-controls .button { width: 100%; }

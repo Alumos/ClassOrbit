@@ -41,19 +41,6 @@ const (
 	teacherSessionCookie   = "classorbit_session"
 )
 
-type teacherCredentials struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-type navigationBatchInput struct {
-	Items []navigationLinkInput `json:"items"`
-}
-
-type apiError struct {
-	Error string `json:"error"`
-}
-
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		fmt.Println(buildVersionText())
@@ -145,6 +132,8 @@ func databasePath(dataDir string) string {
 }
 
 func (s *server) routes(mux *http.ServeMux) {
+	// Public bootstrap and authentication. QR status is public because the
+	// computer does not have a session until the phone approves the request.
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/auth", s.authStatus)
 	mux.HandleFunc("POST /api/setup", s.setup)
@@ -155,6 +144,8 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/qr/status", s.getQRLoginStatus)
 	mux.HandleFunc("POST /api/auth/qr/decision", s.decideQRLogin)
 	mux.HandleFunc("PATCH /api/auth/password", s.changePassword)
+
+	// Teacher workspace: classes, scores, attendance, timetable and navigation.
 	mux.HandleFunc("GET /api/dashboard", s.getDashboard)
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("PATCH /api/settings", s.updateSettings)
@@ -193,12 +184,16 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/schedule/{id}", s.deleteScheduleLesson)
 	mux.HandleFunc("PUT /api/schedule/{id}/changes", s.setScheduleChange)
 	mux.HandleFunc("DELETE /api/schedule/{id}/changes", s.deleteScheduleChange)
+
+	// Student-facing read/check-in APIs and server-to-server integration.
 	mux.HandleFunc("GET /api/public/classes", s.getPublicClasses)
 	mux.HandleFunc("GET /api/public/settings", s.getPublicSettings)
 	mux.HandleFunc("GET /api/public/navigation", s.getPublicNavigation)
 	mux.HandleFunc("GET /api/public/classes/{id}/students", s.getPublicStudents)
 	mux.HandleFunc("POST /api/public/check-in", s.checkIn)
 	mux.HandleFunc("GET /api/integration/classes", s.getIntegrationClasses)
+
+	// Administrative exports, backups and audit history.
 	mux.HandleFunc("GET /api/admin/audit-logs", s.getAuditLogs)
 	mux.HandleFunc("GET /api/admin/backup", s.downloadBackup)
 	mux.HandleFunc("POST /api/admin/restore", s.restoreBackup)
@@ -264,7 +259,7 @@ func (s *server) updateClass(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) deleteClass(w http.ResponseWriter, r *http.Request) {
 	err := s.db.deleteClass(pathID(r, "id"))
-	respond(w, map[string]bool{"ok": err == nil}, err)
+	respond(w, operationResponse{OK: err == nil}, err)
 }
 
 func (s *server) getStudents(w http.ResponseWriter, r *http.Request) {
@@ -331,7 +326,7 @@ func (s *server) updateStudent(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) deleteStudent(w http.ResponseWriter, r *http.Request) {
 	err := s.db.deleteStudent(pathID(r, "id"))
-	respond(w, map[string]bool{"ok": err == nil}, err)
+	respond(w, operationResponse{OK: err == nil}, err)
 }
 
 func (s *server) changeScore(w http.ResponseWriter, r *http.Request) {
@@ -388,17 +383,17 @@ func (s *server) closeAttendance(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) deleteAttendance(w http.ResponseWriter, r *http.Request) {
 	err := s.db.deleteAttendance(pathID(r, "id"))
-	respond(w, map[string]bool{"ok": err == nil}, err)
+	respond(w, operationResponse{OK: err == nil}, err)
 }
 
 func (s *server) restoreAttendance(w http.ResponseWriter, r *http.Request) {
 	err := s.db.restoreAttendance(pathID(r, "id"))
-	respond(w, map[string]bool{"ok": err == nil}, err)
+	respond(w, operationResponse{OK: err == nil}, err)
 }
 
 func (s *server) purgeAttendance(w http.ResponseWriter, r *http.Request) {
 	err := s.db.purgeAttendance(pathID(r, "id"))
-	respond(w, map[string]bool{"ok": err == nil}, err)
+	respond(w, operationResponse{OK: err == nil}, err)
 }
 
 func (s *server) updateAttendanceRecord(w http.ResponseWriter, r *http.Request) {
@@ -462,7 +457,7 @@ func (s *server) updateScheduleLesson(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) deleteScheduleLesson(w http.ResponseWriter, r *http.Request) {
 	err := s.db.deleteScheduleLesson(pathID(r, "id"))
-	respond(w, map[string]bool{"ok": err == nil}, err)
+	respond(w, operationResponse{OK: err == nil}, err)
 }
 
 func (s *server) setScheduleChange(w http.ResponseWriter, r *http.Request) {
@@ -485,7 +480,7 @@ func (s *server) deleteScheduleChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := s.db.deleteScheduleChange(pathID(r, "id"), date)
-	respond(w, map[string]bool{"ok": err == nil}, err)
+	respond(w, operationResponse{OK: err == nil}, err)
 }
 
 func (s *server) importSchedule(w http.ResponseWriter, r *http.Request) {
@@ -650,21 +645,6 @@ func (s *server) getPublicStudents(w http.ResponseWriter, r *http.Request) {
 	respond(w, data, err)
 }
 
-type integrationClassesResponse struct {
-	Classes []integrationClass `json:"classes"`
-}
-
-type integrationClass struct {
-	ID       string               `json:"id"`
-	Name     string               `json:"name"`
-	Students []integrationStudent `json:"students"`
-}
-
-type integrationStudent struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
 // getIntegrationClasses exposes the minimal read-only shape consumed by
 // KeySprint. It deliberately uses a separate bearer token instead of the
 // browser session cookie used by the teacher UI.
@@ -770,11 +750,7 @@ func (s *server) authStatus(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"initialized":   initialized,
-		"authenticated": authenticated,
-		"username":      username,
-	})
+	writeJSON(w, http.StatusOK, authResponse{Initialized: initialized, Authenticated: authenticated, Username: username})
 }
 
 func (s *server) setup(w http.ResponseWriter, r *http.Request) {
@@ -812,7 +788,7 @@ func (s *server) setup(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"initialized": true, "authenticated": true, "username": in.Username})
+	writeJSON(w, http.StatusCreated, authResponse{Initialized: true, Authenticated: true, Username: in.Username})
 }
 
 func (s *server) login(w http.ResponseWriter, r *http.Request) {
@@ -839,7 +815,7 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"initialized": true, "authenticated": true, "username": account.Username})
+	writeJSON(w, http.StatusOK, authResponse{Initialized: true, Authenticated: true, Username: account.Username})
 }
 
 func (s *server) logout(w http.ResponseWriter, r *http.Request) {
@@ -850,7 +826,7 @@ func (s *server) logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	clearTeacherSessionCookie(w, r)
-	writeJSON(w, http.StatusOK, map[string]any{"initialized": true, "authenticated": false, "username": ""})
+	writeJSON(w, http.StatusOK, authResponse{Initialized: true, Authenticated: false, Username: ""})
 }
 
 func (s *server) requireTeacher(next http.Handler) http.Handler {
@@ -978,16 +954,6 @@ func parseExcel(file multipart.File) ([]studentInput, error) {
 		return nil, errors.New("单次最多导入 200 名学生")
 	}
 	return out, nil
-}
-
-type scheduleImportRow struct {
-	ClassName    string
-	Course       string
-	Weekday      int
-	StartTime    string
-	EndTime      string
-	LocationOdd  string
-	LocationEven string
 }
 
 func parseScheduleExcel(file multipart.File) ([]scheduleImportRow, error) {

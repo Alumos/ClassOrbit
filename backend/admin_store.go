@@ -7,17 +7,6 @@ import (
 	"strings"
 )
 
-type auditLog struct {
-	ID         int64  `json:"id"`
-	Action     string `json:"action"`
-	EntityType string `json:"entityType"`
-	EntityID   *int64 `json:"entityId"`
-	Summary    string `json:"summary"`
-	Details    string `json:"details"`
-	Actor      string `json:"actor"`
-	CreatedAt  string `json:"createdAt"`
-}
-
 type statementExecutor interface {
 	Exec(query string, args ...any) (sql.Result, error)
 }

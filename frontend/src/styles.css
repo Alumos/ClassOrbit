@@ -346,6 +346,10 @@ td strong { color: #27272a; font-weight: 550; }
 .qr-device-card span, .qr-device-card small { color: var(--muted); font-size: 11px; }.qr-device-card strong { font-size: 14px; }
 .qr-approval-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .qr-phone-login { width: 100%; display: flex; align-items: center; flex-direction: column; gap: 14px; }.qr-phone-login .field { width: 100%; text-align: left; }.qr-phone-login > .button { width: 100%; }
+.qr-scan-backdrop { position: fixed; inset: 0; z-index: 100; padding: 18px; background: rgba(24,24,27,.42); display: grid; place-items: center; }
+.qr-scan-dialog { width: min(420px, 100%); padding: 18px; border: 1px solid var(--border); border-radius: 9px; background: #fff; box-shadow: 0 18px 50px rgba(0,0,0,.18); display: flex; flex-direction: column; gap: 12px; }
+.qr-scan-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }.qr-scan-header h2 { margin: 0; font-size: 18px; }.qr-scan-header .button { margin: -5px -5px 0 0; }
+.qr-scan-viewport { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: 7px; background: #18181b; overflow: hidden; }.qr-scan-video { width: 100%; height: 100%; object-fit: cover; display: block; }.qr-scan-canvas { display: none; }.qr-scan-starting .qr-scan-video, .qr-scan-capture .qr-scan-video, .qr-scan-processing .qr-scan-video, .qr-scan-error .qr-scan-video { visibility: hidden; }.qr-scan-placeholder { position: absolute; inset: 0; color: #e4e4e7; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; font-size: 13px; }.qr-scan-corners { position: absolute; inset: 17% 20%; border: 2px solid rgba(255,255,255,.92); border-radius: 9px; box-shadow: 0 0 0 999px rgba(0,0,0,.16); }.qr-scan-hint { margin: 0; color: var(--muted); font-size: 11px; line-height: 17px; text-align: center; }.qr-scan-file-button { align-self: center; }.qr-scan-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .setup-panel { width: min(410px, 100%); }
 .setup-kicker { margin-bottom: 4px; color: #15803d; display: block; font-size: 10px; font-weight: 650; }
 .settings-panel { max-width: 1100px; }
@@ -633,6 +637,7 @@ td { height: 43px; padding: 6px 12px; }
   .schedule-calendar-bar { align-items: flex-start; flex-direction: column; }.schedule-calendar-bar > div:last-child { width: 100%; }.schedule-calendar-bar > div:last-child .button { flex: 1; }
   .schedule-config-dates { grid-template-columns: 1fr 1fr; }.schedule-config-dates > div:first-child { grid-column: 1 / -1; }
   .schedule-period-settings { grid-template-columns: 1fr; }.schedule-period-settings > div:first-child { grid-row: auto; margin-bottom: 3px; }
+  .qr-scan-button { width: 36px; min-width: 36px; padding: 0; }.qr-scan-button span { display: none; }.qr-scan-backdrop { padding: 10px; }.qr-scan-dialog { padding: 14px; }
   .schedule-form-actions { flex-wrap: wrap; }.schedule-form-actions > span { display: none; }.schedule-form-actions .button { flex: 1; }.schedule-form-actions .button-danger { flex-basis: 100%; }
   .heading-actions { flex-wrap: wrap; justify-content: flex-end; }.heading-actions .button { flex: 1; }
   .settings-grid { grid-template-columns: 1fr; }.report-controls { align-items: stretch; flex-direction: column; }.report-controls .select-trigger, .report-controls .input, .report-controls .button { width: 100%; }

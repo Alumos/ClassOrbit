@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { QRLoginApprovalPage } from './QRCodeLogin'
+import { loginURLFromQR, QRScannerDialog } from './QRCodeScanner'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -32,5 +33,25 @@ describe('QRLoginApprovalPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '确认登录' }))
     expect(await screen.findByRole('heading', { name: '已确认登录' })).toBeInTheDocument()
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/auth/qr/decision', expect.objectContaining({ method: 'POST' })))
+  })
+})
+
+describe('loginURLFromQR', () => {
+  it('only accepts a same-origin ClassOrbit confirmation URL', () => {
+    expect(loginURLFromQR(`${window.location.origin}/qr-login?token=scan-token`)).toBe('/qr-login?token=scan-token')
+    expect(loginURLFromQR('/qr-login?token=scan-token')).toBe('/qr-login?token=scan-token')
+    expect(loginURLFromQR('https://example.com/qr-login?token=scan-token')).toBeNull()
+    expect(loginURLFromQR(`${window.location.origin}/navigation`)).toBeNull()
+  })
+})
+
+describe('QRScannerDialog', () => {
+  it('provides a camera capture fallback and can be closed', async () => {
+    const onClose = vi.fn()
+    render(<QRScannerDialog onClose={onClose} />)
+    expect(await screen.findByRole('dialog', { name: '扫描电脑登录二维码' })).toBeInTheDocument()
+    expect(screen.getByLabelText('拍照识别二维码')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '关闭扫一扫' }))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 })

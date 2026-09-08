@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-08
+
+### Added
+
+- 已登录手机教师后台新增“扫一扫登录电脑”入口，使用原生相机取景识别二维码后自动打开登录确认页。
+- 相机无法调用时可使用手机拍照识别二维码，并仅允许当前 ClassOrbit 站点的登录二维码。
+
+### Fixed
+
+- 固定 PC 端扫码登录占位区域的最终尺寸，切换扫码方式时不再出现二维码显示前的瞬时错位。
+
+### Changed
+
+- 开放同源页面的相机权限策略，仅限 ClassOrbit 站点自身，以支持手机浏览器调用相机。
+
 ## [1.7.1] - 2026-09-07
 
 ### Fixed
@@ -116,7 +131,8 @@
 - 教师 API 与学生公开 API 隔离，密码使用 bcrypt 存储，登录会话只保存 Token 哈希。
 - npm 依赖审计在发布时无已知漏洞。
 
-[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.8.0
 [1.7.1]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.7.1
 [1.7.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.7.0
 [1.6.2]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.6.2

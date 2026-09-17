@@ -138,7 +138,6 @@ export function AttendancePage({ classes, classId, setClassId, notify, onDataCha
     catch (error) { notify((error as Error).message, 'error') }
   }
 
-  const hasAnyActive = classes.some(item => item.activeSessionId)
   const targetClassName = suggestion?.detected ? suggestion.className : classes.find(item => item.id === filterClassId)?.name || ''
 
   return <>
@@ -146,7 +145,7 @@ export function AttendancePage({ classes, classId, setClassId, notify, onDataCha
       <div><h1>考勤管理</h1><p>按需加载历史明细，删除记录可从回收站恢复。</p></div>
       <div className="heading-actions">
         <Button variant="outline" onClick={() => setTrash(value => !value)}>{trash ? <RotateCcw size={15} /> : <ArchiveRestore size={15} />}{trash ? '返回考勤' : '回收站'}</Button>
-        {!trash && <Button disabled={!classes.length || hasAnyActive} onClick={() => void openStart()}><Play size={15} />智能发起点名</Button>}
+        {!trash && <Button disabled={!classes.length} onClick={() => void openStart()}><Play size={15} />智能发起点名</Button>}
       </div>
     </div>
     <section className="panel filter-panel">

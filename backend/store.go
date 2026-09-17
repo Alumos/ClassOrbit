@@ -1106,33 +1106,50 @@ func (s *store) deleteTeacherSession(tokenHash string) error {
 	return err
 }
 
+const navigationSelect = `SELECT n.id,n.kind,n.title,n.url,n.icon_url,n.sort_order,
+ s.public_id,s.revision,s.source_name,s.source_size,s.extracted_size,s.file_count,s.updated_at
+ FROM navigation_links n LEFT JOIN teaching_sites s ON s.navigation_id=n.id`
+
+func scanNavigation(row interface{ Scan(...any) error }) (navigationLink, error) {
+	var item navigationLink
+	var publicID, revision, sourceName, updatedAt sql.NullString
+	var sourceSize, extractedSize, fileCount sql.NullInt64
+	err := row.Scan(&item.ID, &item.Kind, &item.Title, &item.URL, &item.IconURL, &item.SortOrder,
+		&publicID, &revision, &sourceName, &sourceSize, &extractedSize, &fileCount, &updatedAt)
+	if err != nil {
+		return item, err
+	}
+	if item.Kind == "site" && publicID.Valid {
+		item.URL = fmt.Sprintf("%s/%s/%s/", teachingSiteURLPrefix, publicID.String, revision.String)
+		item.Site = &teachingSiteSummary{PublicID: publicID.String, Revision: revision.String, SourceName: sourceName.String,
+			SourceSize: sourceSize.Int64, ExtractedSize: extractedSize.Int64, FileCount: int(fileCount.Int64), UpdatedAt: updatedAt.String}
+	}
+	return item, nil
+}
+
 func (s *store) navigation() ([]navigationLink, error) {
 	items := []navigationLink{}
-	rows, err := s.Query(`SELECT n.id,n.kind,n.title,n.url,n.icon_url,n.sort_order,
-		s.public_id,s.revision,s.source_name,s.source_size,s.extracted_size,s.file_count,s.updated_at
-		FROM navigation_links n
-		LEFT JOIN teaching_sites s ON s.navigation_id=n.id
-		ORDER BY n.sort_order,n.id`)
+	rows, err := s.Query(navigationSelect + ` ORDER BY n.sort_order,n.id`)
 	if err != nil {
 		return items, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var item navigationLink
-		var publicID, revision, sourceName, updatedAt sql.NullString
-		var sourceSize, extractedSize, fileCount sql.NullInt64
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.URL, &item.IconURL, &item.SortOrder,
-			&publicID, &revision, &sourceName, &sourceSize, &extractedSize, &fileCount, &updatedAt); err != nil {
+		item, err := scanNavigation(rows)
+		if err != nil {
 			return items, err
-		}
-		if item.Kind == "site" && publicID.Valid {
-			item.URL = fmt.Sprintf("%s/%s/%s/", teachingSiteURLPrefix, publicID.String, revision.String)
-			item.Site = &teachingSiteSummary{PublicID: publicID.String, Revision: revision.String, SourceName: sourceName.String,
-				SourceSize: sourceSize.Int64, ExtractedSize: extractedSize.Int64, FileCount: int(fileCount.Int64), UpdatedAt: updatedAt.String}
 		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *store) navigationByID(id int64) (navigationLink, error) {
+	item, err := scanNavigation(s.QueryRow(navigationSelect+` WHERE n.id=?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		err = errNotFound
+	}
+	return item, err
 }
 
 func (s *store) replaceNavigation(items []navigationLinkInput) ([]navigationLink, error) {

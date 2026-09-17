@@ -92,11 +92,12 @@ func (s *server) downloadBackup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) restoreBackup(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxRestoreSize)
-	if err := r.ParseMultipartForm(maxRestoreSize); err != nil {
-		badRequest(w, "备份文件不能超过 128MB")
+	r.Body = http.MaxBytesReader(w, r.Body, maxRestoreSize+(4<<20))
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		badRequest(w, "备份文件不能超过 512MB")
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
 	file, _, err := r.FormFile("file")
 	if err != nil {
 		badRequest(w, "请选择 ClassOrbit 数据库备份")
@@ -115,7 +116,7 @@ func (s *server) restoreBackup(w http.ResponseWriter, r *http.Request) {
 	written, copyErr := io.Copy(temp, io.LimitReader(file, maxRestoreSize+1))
 	closeErr := temp.Close()
 	if copyErr != nil || closeErr != nil || written == 0 || written > maxRestoreSize {
-		badRequest(w, "备份文件无效或超过 128MB")
+		badRequest(w, "备份文件无效或超过 512MB")
 		return
 	}
 	defer os.Remove(tempPath + "-wal")

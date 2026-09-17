@@ -2,7 +2,7 @@
 
 ClassOrbit（智创课堂）是面向小学信息科技教师的轻量班级积分、课堂考勤与课程导航系统。Go 单进程提供 API 并托管 React 前端，数据存放在本地 SQLite，适合教师电脑、校内局域网或小型服务器部署。
 
-当前稳定版本为 `v1.8.0`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+当前稳定版本为 `v1.8.3`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
 ## 已实现
 
@@ -60,7 +60,7 @@ classorbit/
 └── Makefile                # 本地构建、测试和容器命令
 ```
 
-Go 后端原先位于项目根目录的 `main.go` 和 `store.go`，并非缺少后端。本次已迁入 `backend/`，目录边界更加清晰。生产环境仍然只有一个 Go 进程：同时提供 API 和前端静态文件。
+生产环境只有一个 Go 进程，同时提供 API 和前端静态文件。
 
 ### 阅读代码的建议顺序
 
@@ -212,6 +212,8 @@ docker compose down
 如果从旧版 ClassPoint 升级，在 `.env` 中设置 `DATA_VOLUME_NAME=classpoint_data` 即可继续挂载原数据卷。程序也会自动识别数据卷内已有的 `classpoint.db`；新安装则使用 `classorbit.db`。
 
 SQLite 使用 WAL 模式。后台“系统设置”可以在线下载、校验和恢复一致性备份，备份也包含教师上传的教学网页；程序默认每天在数据卷的 `backups/` 下保存一份备份并保留 14 天，恢复前还会额外保存安全副本。不要在容器运行时直接复制单个数据库主文件。
+
+教学网页使用 `/published/{publicId}/{revision}/...`，其中 revision 标识内容版本；旧 `/published-v2/...` 自动跳转到相同网页。更新镜像时保持原 `DATA_VOLUME_NAME` 和 `/app/data` 挂载即可沿用全部数据，无需导出导入或重新上传。此前若 CDN 缓存过旧 `/published/` 的 HTML，升级时清除该路径缓存，使最新 HTML 缓存策略生效。
 
 上传的教学网页由数据库保存可恢复的压缩源，并解压到数据卷内的 `site-cache/` 提供静态访问。单个 ZIP 最大 32MB，项目解压后最大 128MB、最多 2000 个文件；教学网页压缩源总量上限为 384MB。项目必须包含 `index.html`，内部 CSS、JavaScript、图片等文件应使用相对路径；只运行静态 HTML、CSS、JavaScript 和资源文件，不支持 PHP、Python、Node 等服务端程序。
 

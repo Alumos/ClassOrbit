@@ -617,8 +617,8 @@ func TestTeachingSiteCRUDDirectoryZIPAndConcurrentServing(t *testing.T) {
 	if created.Kind != "site" || created.Site == nil || created.Site.FileCount != 3 || created.Site.ExtractedSize == 0 || created.URL == "" {
 		t.Fatalf("created teaching site = %+v", created)
 	}
-	if !strings.HasPrefix(created.URL, "/published-v2/") {
-		t.Fatalf("teaching site URL does not carry the delivery policy version: %q", created.URL)
+	if !strings.HasPrefix(created.URL, "/published/") {
+		t.Fatalf("teaching site URL is not canonical: %q", created.URL)
 	}
 
 	response = apiRequest(t, handler, http.MethodGet, fmt.Sprintf("/api/navigation/sites/%d", created.ID), "", cookie)

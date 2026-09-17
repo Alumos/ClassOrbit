@@ -17,7 +17,6 @@ type NavigationDraft = {
 }
 
 type UploadMode = 'html' | 'folder' | 'zip'
-type DirectoryFile = File & { webkitRelativePath?: string }
 
 let draftSequence = 0
 
@@ -98,12 +97,14 @@ export function NavigationSettingsPage({ notify, onDirtyChange }: { notify: Noti
 
   const openUpload = () => {
     if (dirty) { notify('请先保存导航列表中的修改，再上传教学网页', 'error'); return }
+    setReplacing(null)
     setUploadOpen(true)
   }
 
   const openReplace = (item: NavigationDraft) => {
     if (dirty) { notify('请先保存导航列表中的修改，再替换教学网页', 'error'); return }
     setReplacing(item)
+    setUploadOpen(true)
   }
 
   const removeExternal = (key: string) => setItems(current => current.filter(item => item.key !== key))
@@ -194,8 +195,7 @@ export function NavigationSettingsPage({ notify, onDirtyChange }: { notify: Noti
         })}</tbody>
       </table></div>}
     </section>
-    <TeachingSiteDialog open={uploadOpen} onOpenChange={setUploadOpen} notify={notify} onDone={async () => { setUploadOpen(false); await load() }} />
-    <TeachingSiteDialog open={!!replacing} onOpenChange={open => !open && setReplacing(null)} item={replacing} notify={notify} onDone={async () => { setReplacing(null); await load() }} />
+    <TeachingSiteDialog open={uploadOpen} onOpenChange={setUploadOpen} item={replacing} notify={notify} onDone={async () => { setUploadOpen(false); await load() }} />
     <Dialog open={!!deleting} onOpenChange={open => !open && !busy && setDeleting(null)} title="删除教学网页" description="导航项和上传的全部网页文件都会删除，无法恢复。" footer={<><Button variant="outline" disabled={busy} onClick={() => setDeleting(null)}>取消</Button><Button variant="danger" disabled={busy} onClick={() => void removeTeachingSite()}><Trash2 size={14} />{busy ? '正在删除' : '确认删除'}</Button></>}><div className="danger-box">确定删除 <strong>{deleting?.title}</strong> 及其 {deleting?.site?.fileCount || 0} 个项目文件吗？</div></Dialog>
   </>
 }
@@ -204,7 +204,7 @@ function TeachingSiteDialog({ open, onOpenChange, item, notify, onDone }: { open
   const [mode, setMode] = useState<UploadMode>('html')
   const [title, setTitle] = useState('')
   const [iconUrl, setIconUrl] = useState('')
-  const [files, setFiles] = useState<DirectoryFile[]>([])
+  const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const folderInput = useRef<HTMLInputElement>(null)
 
@@ -221,7 +221,7 @@ function TeachingSiteDialog({ open, onOpenChange, item, notify, onDone }: { open
   }, [mode, open])
 
   const changeMode = (next: UploadMode) => { setMode(next); setFiles([]) }
-  const choose = (event: ChangeEvent<HTMLInputElement>) => setFiles(Array.from(event.target.files || []) as DirectoryFile[])
+  const choose = (event: ChangeEvent<HTMLInputElement>) => setFiles(Array.from(event.target.files || []))
   const upload = async () => {
     if (!files.length || (!item && !title.trim())) return
     const body = new FormData()

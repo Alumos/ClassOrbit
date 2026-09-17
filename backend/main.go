@@ -199,7 +199,14 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/restore", s.restoreBackup)
 	mux.HandleFunc("GET /api/admin/reports", s.exportReport)
 	mux.HandleFunc("GET "+teachingSiteURLPrefix+"/{site}/{revision}/{path...}", s.serveTeachingSite)
-	mux.HandleFunc("GET /published/{site}/{revision}/{path...}", s.serveTeachingSite)
+	// One compatibility boundary for links issued before the canonical path.
+	mux.HandleFunc("GET /published-v2/{site}/{revision}/{path...}", func(w http.ResponseWriter, r *http.Request) {
+		target := teachingSiteURLPrefix + strings.TrimPrefix(r.URL.EscapedPath(), "/published-v2")
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, target, http.StatusPermanentRedirect)
+	})
 
 	assets := http.FileServer(http.FS(s.public))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

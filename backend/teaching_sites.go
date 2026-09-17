@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -20,9 +19,8 @@ import (
 )
 
 const (
-	// Keep this path versioned so previously immutable CDN responses cannot
-	// preserve an outdated document sandbox policy after an application update.
-	teachingSiteURLPrefix = "/published-v2"
+	// Content revisions belong in the URL; delivery policy is revalidated on HTML.
+	teachingSiteURLPrefix = "/published"
 	maxSiteArchiveSize    = 32 << 20
 	maxSiteExtractedSize  = 128 << 20
 	maxSiteRequestSize    = maxSiteExtractedSize + (4 << 20)
@@ -206,7 +204,7 @@ func prepareTeachingSite(dataDir, mode, sourceName string, files []*multipart.Fi
 		if err := copyMultipartFile(files[0], zipPath, maxSiteArchiveSize, &p.sourceSize, nil, false); err != nil {
 			return fail(err)
 		}
-		if err := extractUploadedZip(zipPath, rawDir, p); err != nil {
+		if err := extractSiteArchive(zipPath, rawDir, p); err != nil {
 			return fail(err)
 		}
 	case "folder":
@@ -307,7 +305,7 @@ func copyMultipartFile(header *multipart.FileHeader, destination string, limit i
 	return nil
 }
 
-func extractUploadedZip(zipPath, rawDir string, prepared *preparedTeachingSite) error {
+func extractSiteArchive(zipPath, rawDir string, prepared *preparedTeachingSite) error {
 	reader, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return errors.New("无法读取 ZIP 文件，请确认压缩包没有损坏")
@@ -704,182 +702,15 @@ func (s *server) restoreSiteCache(publicID, revision, destination string) error 
 	if err := os.WriteFile(zipPath, archive, 0o600); err != nil {
 		return err
 	}
-	prepared := &preparedTeachingSite{workspace: workspace, siteDir: filepath.Join(workspace, "site"), revision: revision}
+	prepared := &preparedTeachingSite{siteDir: filepath.Join(workspace, "site")}
 	if err := os.MkdirAll(prepared.siteDir, 0o755); err != nil {
 		return err
 	}
-	if err := extractCanonicalArchive(zipPath, prepared.siteDir); err != nil {
+	if err := extractSiteArchive(zipPath, prepared.siteDir, prepared); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return err
 	}
 	return os.Rename(prepared.siteDir, destination)
-}
-
-func extractCanonicalArchive(zipPath, destination string) error {
-	reader, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-	var total int64
-	for _, item := range reader.File {
-		if item.FileInfo().IsDir() {
-			continue
-		}
-		rel, ignored, err := safeSitePath(item.Name)
-		if err != nil || ignored || item.Mode()&os.ModeSymlink != 0 {
-			return errors.New("保存的教学网页数据无效")
-		}
-		if total+int64(item.UncompressedSize64) > maxSiteExtractedSize {
-			return errors.New("保存的教学网页超出大小限制")
-		}
-		source, err := item.Open()
-		if err != nil {
-			return err
-		}
-		filePath := filepath.Join(destination, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
-			source.Close()
-			return err
-		}
-		target, err := os.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-		if err != nil {
-			source.Close()
-			return err
-		}
-		written, copyErr := io.Copy(target, io.LimitReader(source, maxSiteExtractedSize-total+1))
-		closeErr := target.Close()
-		source.Close()
-		if copyErr != nil || closeErr != nil || written > maxSiteExtractedSize-total {
-			return errors.New("保存的教学网页数据损坏")
-		}
-		total += written
-	}
-	return nil
-}
-
-func (s *store) createTeachingSite(title, iconURL, publicID string, prepared *preparedTeachingSite, archive []byte) (navigationLink, error) {
-	tx, err := s.Begin()
-	if err != nil {
-		return navigationLink{}, err
-	}
-	defer tx.Rollback()
-	var navigationCount int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM navigation_links`).Scan(&navigationCount); err != nil {
-		return navigationLink{}, err
-	}
-	if navigationCount >= 100 {
-		return navigationLink{}, fmt.Errorf("%w: 导航项目不能超过 100 个", errConflict)
-	}
-	var storedSize int64
-	if err := tx.QueryRow(`SELECT COALESCE(SUM(length(archive)),0) FROM teaching_sites`).Scan(&storedSize); err != nil {
-		return navigationLink{}, err
-	}
-	if storedSize+int64(len(archive)) > maxSiteStoredSize {
-		return navigationLink{}, fmt.Errorf("%w: 教学网页压缩源总量不能超过 384MB，请先删除不再使用的项目", errConflict)
-	}
-	var sortOrder int
-	if err := tx.QueryRow(`SELECT COALESCE(MAX(sort_order)+1,0) FROM navigation_links`).Scan(&sortOrder); err != nil {
-		return navigationLink{}, err
-	}
-	result, err := tx.Exec(`INSERT INTO navigation_links(kind,title,url,icon_url,sort_order) VALUES('site',?,'',?,?)`, title, iconURL, sortOrder)
-	if err != nil {
-		return navigationLink{}, err
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return navigationLink{}, err
-	}
-	if _, err := tx.Exec(`INSERT INTO teaching_sites(navigation_id,public_id,revision,source_name,source_size,extracted_size,file_count,archive) VALUES(?,?,?,?,?,?,?,?)`,
-		id, publicID, prepared.revision, prepared.sourceName, prepared.sourceSize, prepared.extractedSize, prepared.fileCount, archive); err != nil {
-		return navigationLink{}, err
-	}
-	if err := addAudit(tx, "teaching_site.create", "navigation", id, "上传教学网页", fmt.Sprintf("%s，%d 个文件", title, prepared.fileCount)); err != nil {
-		return navigationLink{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return navigationLink{}, err
-	}
-	return s.navigationByID(id)
-}
-
-func (s *store) updateTeachingSite(id int64, prepared *preparedTeachingSite, archive []byte) (navigationLink, error) {
-	tx, err := s.Begin()
-	if err != nil {
-		return navigationLink{}, err
-	}
-	defer tx.Rollback()
-	var storedSize int64
-	if err := tx.QueryRow(`SELECT COALESCE(SUM(length(archive)),0) FROM teaching_sites WHERE navigation_id<>?`, id).Scan(&storedSize); err != nil {
-		return navigationLink{}, err
-	}
-	if storedSize+int64(len(archive)) > maxSiteStoredSize {
-		return navigationLink{}, fmt.Errorf("%w: 教学网页压缩源总量不能超过 384MB，请先删除不再使用的项目", errConflict)
-	}
-	result, err := tx.Exec(`UPDATE teaching_sites SET revision=?,source_name=?,source_size=?,extracted_size=?,file_count=?,archive=?,updated_at=datetime('now','localtime') WHERE navigation_id=?`,
-		prepared.revision, prepared.sourceName, prepared.sourceSize, prepared.extractedSize, prepared.fileCount, archive, id)
-	if err != nil {
-		return navigationLink{}, err
-	}
-	changed, _ := result.RowsAffected()
-	if changed == 0 {
-		return navigationLink{}, errNotFound
-	}
-	if err := addAudit(tx, "teaching_site.update", "navigation", id, "替换教学网页", fmt.Sprintf("%s，%d 个文件", prepared.sourceName, prepared.fileCount)); err != nil {
-		return navigationLink{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return navigationLink{}, err
-	}
-	return s.navigationByID(id)
-}
-
-func (s *store) deleteTeachingSite(id int64) (string, error) {
-	tx, err := s.Begin()
-	if err != nil {
-		return "", err
-	}
-	defer tx.Rollback()
-	var publicID, title string
-	err = tx.QueryRow(`SELECT s.public_id,n.title FROM teaching_sites s JOIN navigation_links n ON n.id=s.navigation_id WHERE s.navigation_id=?`, id).Scan(&publicID, &title)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", errNotFound
-	}
-	if err != nil {
-		return "", err
-	}
-	if _, err := tx.Exec(`DELETE FROM navigation_links WHERE id=? AND kind='site'`, id); err != nil {
-		return "", err
-	}
-	if err := addAudit(tx, "teaching_site.delete", "navigation", id, "删除教学网页", title); err != nil {
-		return "", err
-	}
-	if err := tx.Commit(); err != nil {
-		return "", err
-	}
-	return publicID, nil
-}
-
-func (s *store) navigationByID(id int64) (navigationLink, error) {
-	items, err := s.navigation()
-	if err != nil {
-		return navigationLink{}, err
-	}
-	for _, item := range items {
-		if item.ID == id {
-			return item, nil
-		}
-	}
-	return navigationLink{}, errNotFound
-}
-
-func (s *store) teachingSiteArchive(publicID, revision string) ([]byte, error) {
-	var archive []byte
-	err := s.QueryRow(`SELECT archive FROM teaching_sites WHERE public_id=? AND revision=?`, publicID, revision).Scan(&archive)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, errNotFound
-	}
-	return archive, err
 }

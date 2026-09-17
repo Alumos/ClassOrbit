@@ -102,7 +102,8 @@
 | `DELETE` | `/api/navigation/sites/{id}` | 删除教学网页和缓存文件。 |
 
 上传教学网页限制：单个压缩源 32 MiB，解压后 128 MiB，最多 2000 个文件；必须包含
-`index.html`。静态网页通过版本化 `/published-v2/{publicId}/{revision}/...` 提供。
+`index.html`。静态网页统一通过 `/published/{publicId}/{revision}/...` 提供，revision 为内容版本。
+旧 `/published-v2/{publicId}/{revision}/...` 返回 308 到规范地址，保留资源路径及查询参数；它不保存或提供另一套网页。
 
 ## 学生公开接口
 

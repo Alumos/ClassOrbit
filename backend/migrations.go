@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+const currentSchemaVersion = 4
+
 // schemaMigration is append-only. The original ClassOrbit schema predates
 // versioned migrations, so migrate() first guarantees the baseline and then
 // hands every subsequent schema change to this atomic runner.
@@ -25,6 +27,7 @@ func (s *store) applyVersionedMigrations() error {
 		{version: 1, apply: migrateOperationalSafety},
 		{version: 2, apply: migrateTeachingSites},
 		{version: 3, apply: migrateQRLogin},
+		{version: 4, apply: migrateStorageIndexes},
 	}
 	for _, migration := range migrations {
 		var applied bool
@@ -51,6 +54,29 @@ func (s *store) applyVersionedMigrations() error {
 		}
 	}
 	return nil
+}
+
+// Versioned databases already contain the baseline; never replay legacy data repairs.
+func (s *store) schemaVersion() (int, error) {
+	var exists bool
+	if err := s.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations')`).Scan(&exists); err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, nil
+	}
+	var version int
+	err := s.QueryRow(`SELECT COALESCE(MAX(version),0) FROM schema_migrations`).Scan(&version)
+	return version, err
+}
+
+func migrateStorageIndexes(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+  DROP INDEX IF EXISTS idx_teaching_sites_public;
+  DROP INDEX IF EXISTS idx_audit_logs_created;
+  CREATE INDEX IF NOT EXISTS idx_attendance_class_page ON attendance_sessions(class_id,deleted_at,id DESC);
+ `)
+	return err
 }
 
 func migrateQRLogin(tx *sql.Tx) error {

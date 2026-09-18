@@ -34,7 +34,17 @@ func openStore(path string) (*store, error) {
 }
 
 func (s *store) migrate() error {
-	_, err := s.Exec(`
+	version, err := s.schemaVersion()
+	if err != nil {
+		return err
+	}
+	if version > currentSchemaVersion {
+		return fmt.Errorf("database schema %d is newer than supported schema %d", version, currentSchemaVersion)
+	}
+	if version >= 3 {
+		return s.applyVersionedMigrations()
+	}
+	_, err = s.Exec(`
 CREATE TABLE IF NOT EXISTS classes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -305,24 +315,32 @@ COALESCE((SELECT SUM(score) FROM students WHERE deleted_at IS NULL),0),
 	return dashboardResponse{ClassCount: classes, StudentCount: students, TotalScore: score, ActiveSessions: active}, err
 }
 
+const classSelect = `SELECT c.id,c.name,c.grade,c.class_no,c.created_at,
+(SELECT COUNT(*) FROM students st WHERE st.class_id=c.id AND st.deleted_at IS NULL),
+(SELECT COALESCE(SUM(score),0) FROM students st WHERE st.class_id=c.id AND st.deleted_at IS NULL),
+(SELECT id FROM attendance_sessions a INDEXED BY idx_one_active_session WHERE a.class_id=c.id AND a.status='active' AND a.deleted_at IS NULL LIMIT 1)
+FROM classes c`
+
+func scanClass(row interface{ Scan(...any) error }) (classRow, error) {
+	var c classRow
+	err := row.Scan(&c.ID, &c.Name, &c.Grade, &c.ClassNo, &c.CreatedAt, &c.StudentCount, &c.TotalScore, &c.ActiveSessionID)
+	return c, err
+}
+
 func (s *store) classes(publicOnly bool) ([]classRow, error) {
 	where := " WHERE c.deleted_at IS NULL"
 	if publicOnly {
-		where += " AND EXISTS (SELECT 1 FROM attendance_sessions a2 WHERE a2.class_id=c.id AND a2.status='active' AND a2.deleted_at IS NULL)"
+		where += " AND EXISTS (SELECT 1 FROM attendance_sessions a INDEXED BY idx_one_active_session WHERE a.class_id=c.id AND a.status='active' AND a.deleted_at IS NULL)"
 	}
-	rows, err := s.Query(`SELECT c.id,c.name,c.grade,c.class_no,c.created_at,
-(SELECT COUNT(*) FROM students st WHERE st.class_id=c.id AND st.deleted_at IS NULL),
-(SELECT COALESCE(SUM(score),0) FROM students st WHERE st.class_id=c.id AND st.deleted_at IS NULL),
-(SELECT id FROM attendance_sessions a WHERE a.class_id=c.id AND a.status='active' AND a.deleted_at IS NULL LIMIT 1)
-FROM classes c` + where + ` ORDER BY c.id`)
+	rows, err := s.Query(classSelect + where + ` ORDER BY c.id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []classRow{}
 	for rows.Next() {
-		var c classRow
-		if err := rows.Scan(&c.ID, &c.Name, &c.Grade, &c.ClassNo, &c.CreatedAt, &c.StudentCount, &c.TotalScore, &c.ActiveSessionID); err != nil {
+		c, err := scanClass(rows)
+		if err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -381,12 +399,7 @@ func (s *store) updateClass(id int64, in classInput) (classRow, error) {
 	return s.classByID(id)
 }
 func (s *store) classByID(id int64) (classRow, error) {
-	var c classRow
-	err := s.QueryRow(`SELECT c.id,c.name,c.grade,c.class_no,c.created_at,
-(SELECT COUNT(*) FROM students st WHERE st.class_id=c.id AND st.deleted_at IS NULL),
-(SELECT COALESCE(SUM(score),0) FROM students st WHERE st.class_id=c.id AND st.deleted_at IS NULL),
-(SELECT id FROM attendance_sessions a WHERE a.class_id=c.id AND a.status='active' AND a.deleted_at IS NULL LIMIT 1)
-FROM classes c WHERE c.id=? AND c.deleted_at IS NULL`, id).Scan(&c.ID, &c.Name, &c.Grade, &c.ClassNo, &c.CreatedAt, &c.StudentCount, &c.TotalScore, &c.ActiveSessionID)
+	c, err := scanClass(s.QueryRow(classSelect+` WHERE c.id=? AND c.deleted_at IS NULL`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		err = errNotFound
 	}

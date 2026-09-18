@@ -53,7 +53,7 @@ func (s *store) createAutomaticBackup() (string, error) {
 		return "", err
 	}
 	target := filepath.Join(directory, "classorbit-auto-"+time.Now().Format("20060102")+".db")
-	if _, err := os.Stat(target); err == nil {
+	if _, err := os.Stat(target); err == nil && validateBackupFile(target) == nil {
 		if err := cleanupAutomaticBackups(directory, backupRetentionDays()); err != nil {
 			return "", err
 		}

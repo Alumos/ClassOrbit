@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -131,8 +132,39 @@ func (s *server) restoreBackup(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, "备份数据库升级失败，请确认文件版本正确")
 		return
 	}
-	if _, err := candidate.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
-		_ = candidate.Close()
+	defer candidate.Close()
+	if err := candidate.validateTeachingSiteSources(); err != nil {
+		badRequest(w, "备份中的教学网页源文件不完整或损坏")
+		return
+	}
+	prepared := &server{db: candidate}
+	if err := prepared.refreshTeachingSiteRegistry(); err != nil {
+		badRequest(w, "备份中的导航数据无效")
+		return
+	}
+	safetyPath, err := s.db.createSafetyBackup()
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	// Complete all fallible data changes before replacing the live database.
+	tx, err := candidate.Begin()
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`DELETE FROM teacher_sessions; DELETE FROM teacher_qr_logins;`); err == nil {
+		err = addAudit(tx, "backup.restore", "system", 0, "恢复数据库备份", "恢复前安全备份："+filepath.Base(safetyPath))
+	}
+	if err == nil {
+		err = tx.Commit()
+	}
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	if err := candidate.checkpoint(); err != nil {
 		respond(w, nil, err)
 		return
 	}
@@ -140,40 +172,31 @@ func (s *server) restoreBackup(w http.ResponseWriter, r *http.Request) {
 		respond(w, nil, err)
 		return
 	}
-
-	safetyPath, err := s.db.createSafetyBackup()
-	if err != nil {
+	if err := s.db.checkpoint(); err != nil {
 		respond(w, nil, err)
 		return
 	}
 	currentPath := s.db.path
-	_, _ = s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
 	if err := s.db.Close(); err != nil {
-		_ = os.Remove(safetyPath)
 		respond(w, nil, err)
 		return
 	}
-	_ = os.Remove(currentPath + "-wal")
-	_ = os.Remove(currentPath + "-shm")
 	if err := os.Rename(tempPath, currentPath); err != nil {
 		reopened, reopenErr := openStore(currentPath)
 		if reopenErr == nil {
 			s.db = reopened
 		} else {
-			err = fmt.Errorf("替换数据库失败：%v；重新打开原数据库也失败：%w", err, reopenErr)
+			err = fmt.Errorf("替换数据库失败：%v；重新打开原数据库失败：%w；安全备份：%s", err, reopenErr, safetyPath)
 		}
-		_ = os.Remove(safetyPath)
 		respond(w, nil, err)
 		return
 	}
 	reopened, err := openStore(currentPath)
 	if err != nil {
-		failedPath := currentPath + ".failed-" + time.Now().Format("20060102-150405")
-		_ = os.Rename(currentPath, failedPath)
-		_ = os.Rename(safetyPath, currentPath)
-		rollbackStore, rollbackErr := openStore(currentPath)
+		// Keep the safety backup intact even if rollback itself encounters an error.
+		rollbackStore, rollbackErr := restoreSafetyBackup(safetyPath, currentPath)
 		if rollbackErr != nil {
-			respond(w, nil, fmt.Errorf("恢复数据库失败：%v；重新打开安全备份也失败：%w", err, rollbackErr))
+			respond(w, nil, fmt.Errorf("恢复数据库失败：%v；回滚失败：%w；安全备份：%s", err, rollbackErr, safetyPath))
 			return
 		}
 		s.db = rollbackStore
@@ -181,49 +204,20 @@ func (s *server) restoreBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.db = reopened
-	if err := s.refreshTeachingSiteRegistry(); err != nil {
-		respond(w, nil, err)
-		return
-	}
+	s.siteAccessMu.Lock()
+	s.siteAccess = prepared.siteAccess
+	s.siteAccessMu.Unlock()
+	// The database is committed. A disposable cache cleanup failure must not
+	// report a failed restore or prevent revocation of old credentials.
 	if err := s.pruneSiteCache(); err != nil {
-		respond(w, nil, err)
-		return
+		log.Printf("warning: restored teaching-site cache cleanup failed: %v", err)
 	}
-	_, _ = s.db.Exec(`DELETE FROM teacher_sessions`)
-	_ = addAudit(s.db, "backup.restore", "system", 0, "恢复数据库备份", "恢复前安全备份："+filepath.Base(safetyPath))
+	clearTeacherSessionCookie(w, r)
 	writeJSON(w, http.StatusOK, backupRestoreResponse{
 		OK:           true,
 		SafetyBackup: filepath.Base(safetyPath),
 		Message:      "恢复成功，请重新登录",
 	})
-}
-
-func validateBackupFile(path string) error {
-	fileURL := (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
-	db, err := sql.Open("sqlite", fileURL+"?mode=ro&_pragma=query_only(1)")
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-	db.SetMaxOpenConns(1)
-	var integrity string
-	if err := db.QueryRow(`PRAGMA quick_check(1)`).Scan(&integrity); err != nil {
-		return err
-	}
-	if integrity != "ok" {
-		return fmt.Errorf("database integrity check failed: %s", integrity)
-	}
-	required := []string{"classes", "students", "attendance_sessions", "settings", "teacher_accounts"}
-	for _, table := range required {
-		var exists bool
-		if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)`, table).Scan(&exists); err != nil {
-			return err
-		}
-		if !exists {
-			return fmt.Errorf("required table %s is missing", table)
-		}
-	}
-	return nil
 }
 
 func (s *server) exportReport(w http.ResponseWriter, r *http.Request) {
@@ -265,41 +259,6 @@ func (s *server) exportReport(w http.ResponseWriter, r *http.Request) {
 
 func urlQueryEscape(value string) string {
 	return strings.ReplaceAll(url.QueryEscape(value), "+", "%20")
-}
-
-func (s *store) createBackup() (string, error) {
-	temp, err := os.CreateTemp(filepath.Dir(s.path), ".classorbit-backup-*.db")
-	if err != nil {
-		return "", err
-	}
-	path := temp.Name()
-	if err := temp.Close(); err != nil {
-		return "", err
-	}
-	_ = os.Remove(path)
-	if err := s.backupTo(path); err != nil {
-		_ = os.Remove(path)
-		return "", err
-	}
-	return path, nil
-}
-
-func (s *store) backupTo(path string) error {
-	escaped := strings.ReplaceAll(path, "'", "''")
-	_, err := s.Exec(`VACUUM INTO '` + escaped + `'`)
-	return err
-}
-
-func (s *store) createSafetyBackup() (string, error) {
-	directory := filepath.Join(filepath.Dir(s.path), "backups")
-	if err := os.MkdirAll(directory, 0o750); err != nil {
-		return "", err
-	}
-	path := filepath.Join(directory, "classorbit-before-restore-"+time.Now().Format("20060102-150405.000000000")+".db")
-	if err := s.backupTo(path); err != nil {
-		return "", err
-	}
-	return path, nil
 }
 
 func (s *store) buildReport(kind string, classID int64, from, to string) (*excelize.File, string, error) {
@@ -381,7 +340,7 @@ COALESCE(NULLIF(r.student_name_snapshot,''),st.name,'已删除学生'),
 r.status,COALESCE(r.checked_at,''),r.method
 FROM attendance_sessions a LEFT JOIN classes c ON c.id=a.class_id
 JOIN attendance_records r ON r.session_id=a.id LEFT JOIN students st ON st.id=r.student_id
-WHERE a.class_id=? AND a.deleted_at IS NULL AND date(a.session_at) BETWEEN ? AND ?
+WHERE a.class_id=? AND a.deleted_at IS NULL AND a.session_at>=? AND a.session_at<date(?,'+1 day')
 ORDER BY a.session_at,CAST(COALESCE(NULLIF(r.student_no_snapshot,''),st.student_no,'') AS INTEGER)`, classID, from, to)
 		if err != nil {
 			book.Close()

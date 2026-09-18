@@ -144,3 +144,11 @@ GET /api/integration/classes?teacher_username=teacher
 2. 数据库字段只能通过追加式迁移增加，迁移写入 `backend/migrations.go` 并补充旧库测试。
 3. 外部可见行为变更必须补充前后端测试；删除或恢复操作要说明审计与回滚策略。
 4. 不要把数据库内部字段、教师密码哈希或共享 Token 放进公开响应。
+
+### 备份恢复约束
+
+`POST /api/admin/restore` 使用 multipart 字段 `file`，文件上限 512MB。恢复期间暂停其他请求。
+候选数据库须通过 SQLite 完整性、核心表、外键和网页源文件校验；高于当前 schema 的备份被拒绝。
+替换前保存安全副本，在候选库事务内撤销会话/扫码凭证并写审计；替换失败时保留安全副本供回滚。
+成功后返回 `{ ok, safetyBackup, message }` 并清除登录 Cookie，需重新登录。
+自动备份与安全副本保存在原数据卷，不等同于异地备份。

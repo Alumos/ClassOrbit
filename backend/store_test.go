@@ -494,6 +494,10 @@ func TestScheduleMigrationResolvesPeriodCollisions(t *testing.T) {
 	if _, err := s.Exec(`INSERT INTO schedule_lessons(class_id,course,weekday,period,start_time,end_time,location_odd,location_even) VALUES(?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?)`, first.ID, "信息课", 5, 7, "21:00", "21:40", "机房 1", "机房 1", second.ID, "人工智能", 5, 7, "22:00", "22:40", "机房 2", "机房 2"); err != nil {
 		t.Fatal(err)
 	}
+	// Model the pre-versioned schema that required this one-time repair.
+	if _, err := s.Exec(`DROP TABLE schema_migrations`); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}

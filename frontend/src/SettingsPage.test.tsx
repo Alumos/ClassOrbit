@@ -60,3 +60,34 @@ describe('SettingsPage audit logs', () => {
     expect(screen.queryByText('日志 20')).not.toBeInTheDocument()
   })
 })
+
+describe('SettingsPage backup restore', () => {
+  it('uploads the selected backup and signs out after successful restore', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const dispatch = vi.spyOn(window, 'dispatchEvent')
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      expect((init?.body as FormData).get('file')).toBeInstanceOf(File)
+      return new Response(JSON.stringify({ message: '恢复成功，请重新登录', safetyBackup: 'before.db' }), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const notify = vi.fn()
+    const { container } = render(<SettingsPage settings={settings} classes={classes} onChange={vi.fn()} notify={notify} />)
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['backup'], 'classorbit.db')] } })
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('恢复成功，请重新登录；恢复前备份：before.db'))
+    await waitFor(() => expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'classorbit:unauthorized' })))
+    confirm.mockRestore()
+    dispatch.mockRestore()
+  })
+
+  it('rejects oversized backups before uploading', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const notify = vi.fn()
+    const { container } = render(<SettingsPage settings={settings} classes={classes} onChange={vi.fn()} notify={notify} />)
+    const file = new File([], 'oversize.db')
+    Object.defineProperty(file, 'size', { value: 512 * 1024 * 1024 + 1 })
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [file] } })
+    expect(notify).toHaveBeenCalledWith('备份文件不能超过 512MB', 'error')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})

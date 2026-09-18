@@ -2,7 +2,7 @@
 
 ClassOrbit（智创课堂）是面向小学信息科技教师的轻量班级积分、课堂考勤与课程导航系统。Go 单进程提供 API 并托管 React 前端，数据存放在本地 SQLite，适合教师电脑、校内局域网或小型服务器部署。
 
-当前稳定版本为 `v1.8.3`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+当前稳定版本为 `v1.8.4`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
 ## 已实现
 
@@ -211,7 +211,9 @@ docker compose down
 
 如果从旧版 ClassPoint 升级，在 `.env` 中设置 `DATA_VOLUME_NAME=classpoint_data` 即可继续挂载原数据卷。程序也会自动识别数据卷内已有的 `classpoint.db`；新安装则使用 `classorbit.db`。
 
-SQLite 使用 WAL 模式。后台“系统设置”可以在线下载、校验和恢复一致性备份，备份也包含教师上传的教学网页；程序默认每天在数据卷的 `backups/` 下保存一份备份并保留 14 天，恢复前还会额外保存安全副本。不要在容器运行时直接复制单个数据库主文件。
+SQLite 使用 WAL 模式。备份通过独立只读连接生成，避免长时间占用业务数据库连接。后台“系统设置”可以在线下载、校验和恢复一致性备份（恢复文件最大 512MB），备份也包含教师上传的教学网页；程序默认每天在数据卷的 `backups/` 下保存一份备份并保留 14 天，恢复前还会额外保存安全副本。恢复前会验证核心表、外键及教学网页压缩源，并保留当前数据库的安全副本；恢复完成后所有登录和扫码凭证失效。恢复期间暂停其他请求，完成后重新登录。不要在容器运行时直接复制单个数据库主文件。
+
+自动备份和恢复前副本位于同一个数据卷，不能抵御该磁盘损坏；需要另行将下载的备份或 `backups/` 中已完成的备份复制到其他设备。存储性能实测和恢复链路验证见 [`docs/storage-backup-review.md`](docs/storage-backup-review.md)。
 
 教学网页使用 `/published/{publicId}/{revision}/...`，其中 revision 标识内容版本；旧 `/published-v2/...` 自动跳转到相同网页。更新镜像时保持原 `DATA_VOLUME_NAME` 和 `/app/data` 挂载即可沿用全部数据，无需导出导入或重新上传。此前若 CDN 缓存过旧 `/published/` 的 HTML，升级时清除该路径缓存，使最新 HTML 缓存策略生效。
 

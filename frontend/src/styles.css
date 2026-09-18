@@ -204,7 +204,15 @@ td strong { color: #27272a; font-weight: 550; }
 .random-result { min-height: 62px; padding: 10px; border: 1px solid var(--border); border-radius: 7px; background: #fafafa; display: grid; grid-template-columns: 38px minmax(0,1fr) auto; align-items: center; gap: 9px; }
 .random-student { min-width: 0; display: flex; flex-direction: column; }.random-student strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }.random-student p { margin: 2px 0 0; color: var(--muted); font-size: 9px; }
 .random-stage.rolling .random-result { opacity: .72; }.random-stage.rolling .random-avatar { animation: roll-pulse .13s infinite alternate; }
-.random-actions { display: flex; gap: 7px; }
+.random-actions { grid-column: 1 / -1; display: flex; gap: 7px; padding-top: 8px; border-top: 1px solid var(--border); }
+.random-actions > button { flex: 1; }
+.random-score { text-align: right; font-variant-numeric: tabular-nums; }
+.random-score > span { display: block; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.random-score > strong { display: block; font-size: 23px; line-height: 1.2; letter-spacing: -.04em; }
+.random-score.negative > strong { color: #b91c1c; }
+.random-feedback { grid-column: 1 / -1; min-height: 16px; text-align: center; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.random-feedback.delta-add { color: #15803d; }
+.random-feedback.delta-minus { color: #b91c1c; }
 
 .upload-zone { min-height: 185px; border: 1px dashed #c9c9cf; border-radius: 7px; background: #fafafa; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; }
 .upload-zone:hover { border-color: #a1a1aa; background: #f7f7f8; }

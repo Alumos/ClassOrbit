@@ -25,13 +25,12 @@ export function PointsPage({ classes, classId, setClassId, activeClass, notify, 
   useEffect(() => { void load() }, [load])
 
   const changeScore = async (student: Student, delta: number, reason = '') => {
-    setStudents(current => current.map(item => item.id === student.id ? { ...item, score: item.score + delta } : item))
     try {
       const updated = await api<Student>(`/students/${student.id}/score`, json('POST', { delta, reason }))
       setStudents(current => current.map(item => item.id === updated.id ? updated : item))
       onScoreChange(delta)
+      return updated
     } catch (error) {
-      setStudents(current => current.map(item => item.id === student.id ? student : item))
       notify((error as Error).message, 'error')
     }
   }
@@ -69,7 +68,7 @@ export function PointsPage({ classes, classId, setClassId, activeClass, notify, 
       <div className="quick-score"><Button variant="outline" onClick={() => void changeScore(student, -1)} aria-label={`${student.name}扣一分`}><Minus size={17} /><span>扣 1</span></Button><Button onClick={() => void changeScore(student, 1)} aria-label={`${student.name}加一分`}><Plus size={17} /><span>加 1</span></Button></div>
     </article>)}</div> : <section className="panel"><EmptyState icon={<Users size={22} />} title={classId ? '暂无匹配学生' : '先选择一个班级'} detail={classId ? (students.length ? '换一个关键词试试。' : '请在“班级与名单”中导入 Excel 学生名单。') : '创建班级并导入名单后即可开始积分。'} /></section>}
     <AdjustDialog student={adjusting} onClose={() => setAdjusting(null)} onChange={async (delta, reason) => { if (adjusting) await changeScore(adjusting, delta, reason); setAdjusting(null) }} onUndo={undoScore} />
-    <RandomPicker open={pickerOpen} onOpenChange={setPickerOpen} students={students} className={activeClass?.name || ''} onAdjust={(student, delta) => void changeScore(student, delta, '随机点名')} />
+    <RandomPicker open={pickerOpen} onOpenChange={setPickerOpen} students={students} className={activeClass?.name || ''} onAdjust={(student, delta) => changeScore(student, delta, '随机点名')} />
   </>
 }
 
@@ -86,8 +85,10 @@ function AdjustDialog({ student, onClose, onChange, onUndo }: { student: Student
   </Dialog>
 }
 
-function RandomPicker({ open, onOpenChange, students, className, onAdjust }: { open: boolean; onOpenChange: (v: boolean) => void; students: Student[]; className: string; onAdjust: (student: Student, delta: number) => void }) {
-  const [selected, setSelected] = useState<Student[]>([])
+export function RandomPicker({ open, onOpenChange, students, className, onAdjust }: { open: boolean; onOpenChange: (v: boolean) => void; students: Student[]; className: string; onAdjust: (student: Student, delta: number) => Promise<Student | undefined> }) {
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [round, setRound] = useState(0)
+  const selected = selectedIds.flatMap(id => { const student = students.find(item => item.id === id); return student ? [student] : [] })
   const [pickCount, setPickCount] = useState(1)
   const [rolling, setRolling] = useState(false)
   const timerRef = useRef<number | null>(null)
@@ -96,22 +97,46 @@ function RandomPicker({ open, onOpenChange, students, className, onAdjust }: { o
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]
     }
-    return pool.slice(0, Math.min(count, pool.length))
+    return pool.slice(0, Math.min(count, pool.length)).map(student => student.id)
   }
   const pick = () => {
     if (!students.length || rolling) return
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setSelected(sample(pickCount)); return }
+    setRound(current => current + 1)
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setSelectedIds(sample(pickCount)); return }
     setRolling(true)
     let count = 0
-    timerRef.current = window.setInterval(() => { setSelected(sample(pickCount)); count++; if (count >= 12 && timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null; setRolling(false) } }, 65)
+    timerRef.current = window.setInterval(() => { setSelectedIds(sample(pickCount)); count++; if (count >= 12 && timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null; setRolling(false) } }, 65)
   }
   useEffect(() => {
-    if (open) { setSelected([]); setPickCount(current => Math.min(Math.max(1, current), Math.max(1, students.length))); setRolling(false) }
+    if (open) { setSelectedIds([]); setPickCount(current => Math.min(Math.max(1, current), Math.max(1, students.length))); setRolling(false) }
     return () => { if (timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null } }
   }, [open, students.length])
-  const changeCount = (next: number) => { setPickCount(Math.min(Math.max(1, next), Math.max(1, students.length))); setSelected([]) }
+  const changeCount = (next: number) => { setPickCount(Math.min(Math.max(1, next), Math.max(1, students.length))); setSelectedIds([]) }
   return <Dialog open={open} onOpenChange={onOpenChange} title="随机点名" description={`${className} · 共 ${students.length} 名学生`} width="wide" footer={<><Button variant="outline" onClick={() => onOpenChange(false)}>关闭</Button><Button onClick={pick} disabled={rolling}><Shuffle size={16} />{selected.length ? '重新抽取' : '开始抽取'}</Button></>}>
     <div className="random-count"><div><strong>点名人数</strong><span>本次不重复抽取</span></div><div className="number-stepper"><Button variant="outline" size="icon" disabled={pickCount <= 1} onClick={() => changeCount(pickCount - 1)} aria-label="减少点名人数"><Minus size={15} /></Button><Input type="number" min="1" max={Math.max(1, students.length)} value={pickCount} onChange={event => changeCount(Number(event.target.value) || 1)} aria-label="点名人数" /><Button variant="outline" size="icon" disabled={pickCount >= students.length} onClick={() => changeCount(pickCount + 1)} aria-label="增加点名人数"><Plus size={15} /></Button></div></div>
-    <div className={`random-stage ${rolling ? 'rolling' : ''} ${selected.length > 1 ? 'random-stage-multiple' : ''}`}>{selected.length ? <div className="random-results">{selected.map(student => <div className="random-result" key={student.id}><span className="random-avatar">{student.name.slice(-1)}</span><div className="random-student"><strong>{student.name}</strong><p>学号 {student.studentNo}</p></div><div className="random-actions"><Button variant="outline" size="icon" onClick={() => onAdjust(student, -1)} aria-label={`${student.name}扣一分`}><Minus size={14} /></Button><Button size="icon" onClick={() => onAdjust(student, 1)} aria-label={`${student.name}加一分`}><Plus size={14} /></Button></div></div>)}</div> : <><span className="random-placeholder"><UserRound size={34} /></span><strong>准备点名</strong><p>设置人数后开始随机抽取</p></>}</div>
+    <div className={`random-stage ${rolling ? 'rolling' : ''} ${selected.length > 1 ? 'random-stage-multiple' : ''}`}>{selected.length ? <div className="random-results">{selected.map(student => <PickedStudent key={`${round}-${student.id}`} student={student} rolling={rolling} onAdjust={onAdjust} />)}</div> : <><span className="random-placeholder"><UserRound size={34} /></span><strong>准备点名</strong><p>设置人数后开始随机抽取</p></>}</div>
   </Dialog>
+}
+
+function PickedStudent({ student, rolling, onAdjust }: { student: Student; rolling: boolean; onAdjust: (student: Student, delta: number) => Promise<Student | undefined> }) {
+  const [busy, setBusy] = useState(false)
+  const pending = useRef(false)
+  const [change, setChange] = useState<{ before: number; after: number; delta: number } | null>(null)
+  const adjust = async (delta: number) => {
+    if (pending.current || rolling) return
+    pending.current = true
+    setBusy(true)
+    setChange(null)
+    try {
+      const updated = await onAdjust(student, delta)
+      if (updated) setChange({ before: updated.score - delta, after: updated.score, delta })
+    } finally { pending.current = false; setBusy(false) }
+  }
+  return <div className="random-result">
+    <span className="random-avatar">{student.name.slice(-1)}</span>
+    <div className="random-student"><strong title={student.name}>{student.name}</strong><p>学号 {student.studentNo}</p></div>
+    <div className={`random-score ${student.score < 0 ? 'negative' : ''}`} aria-label={`${student.name}当前积分 ${student.score}`}><span>当前积分</span><strong>{student.score}</strong></div>
+    <div className="random-actions"><Button variant="outline" size="sm" disabled={busy || rolling} onClick={() => void adjust(-1)} aria-label={`${student.name}扣一分`}><Minus size={14} />扣 1</Button><Button size="sm" disabled={busy || rolling} onClick={() => void adjust(1)} aria-label={`${student.name}加一分`}><Plus size={14} />加 1</Button></div>
+    <div className={`random-feedback ${change ? change.delta > 0 ? 'delta-add' : 'delta-minus' : ''}`} role="status" aria-live="polite">{busy ? '正在保存…' : change ? `已${change.delta > 0 ? '加' : '扣'} 1 分 · ${change.before} → ${change.after}` : '每次调整 1 分'}</div>
+  </div>
 }

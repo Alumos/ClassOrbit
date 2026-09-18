@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -759,7 +760,7 @@ func TestTeachingSiteRejectsUnsafeOrIncompleteZIP(t *testing.T) {
 
 func TestMissingFrontendAssetIs404AndHTMLIsNotCached(t *testing.T) {
 	db := testStore(t)
-	s := &server{db: db, public: os.DirFS("../frontend/dist")}
+	s := &server{db: db, public: fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<!doctype html><div id=root></div>")}}}
 	mux := http.NewServeMux()
 	s.routes(mux)
 	handler := s.requireTeacher(mux)

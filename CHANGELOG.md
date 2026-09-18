@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [1.8.6] - 2026-09-18
+
+### Fixed
+
+- 增加页面错误边界：旧标签页在容器更新后加载失效模块时显示重新加载入口，使用带时间参数的新地址获取页面，避免无提示白屏及自动刷新循环。
+- 所有前端 HTML 入口和缺失资源默认禁止缓存，只有实际存在的哈希资源长期缓存。
+- 修正静态资源测试为独立内存文件夹具，不依赖本机前端构建产物。
+
 ## [1.8.5] - 2026-09-18
 
 ### Fixed
@@ -14,7 +22,7 @@
 
 ### Notes
 
-- 浏览器对 `attribution-reporting`、`private-aggregation`、`join-ad-interest-group`、`run-ad-auction` 的警告来自反向代理附加的 Permissions-Policy 指令，不影响应用代码；应用自身只声明 camera、microphone、geolocation。
+- 浏览器对 `attribution-reporting`、`private-aggregation`、`join-ad-interest-group`、`run-ad-auction` 的警告并非由应用声明的 Permissions-Policy 指令产生，具体来源需检查实际响应，不影响应用代码；应用自身只声明 camera、microphone、geolocation。
 
 ## [1.8.4] - 2026-09-18
 

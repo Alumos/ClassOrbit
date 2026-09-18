@@ -210,6 +210,7 @@ func (s *server) routes(mux *http.ServeMux) {
 
 	assets := http.FileServer(http.FS(s.public))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			writeJSON(w, http.StatusNotFound, apiError{Error: "接口不存在"})
 			return

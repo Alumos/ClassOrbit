@@ -3,6 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import { PageBoundary } from './PageBoundary'
 
+vi.mock('./pageRecovery', () => ({ recoverPage: vi.fn(), freshPageURL: () => window.location.origin + '/?_classorbit_reload=test' }))
+
 it('shows a fresh navigation link when a lazy chunk fails instead of a blank page', async () => {
   const log = vi.spyOn(console, 'error').mockImplementation(() => {})
   try {
@@ -12,6 +14,6 @@ it('shows a fresh navigation link when a lazy chunk fails instead of a blank pag
     const link = screen.getByRole('link', { name: '重新加载页面' })
     const url = new URL(link.getAttribute('href')!)
     expect(url.origin).toBe(window.location.origin)
-    expect(url.searchParams.has('refresh')).toBe(true)
+    expect(url.searchParams.has('_classorbit_reload')).toBe(true)
   } finally { log.mockRestore() }
 })

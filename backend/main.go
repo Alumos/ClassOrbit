@@ -222,7 +222,15 @@ func (s *server) routes(mux *http.ServeMux) {
 				assets.ServeHTTP(w, r)
 				return
 			}
+			// Never return the SPA document for a missing fingerprinted asset.
+			// Doing so makes browsers report a misleading module MIME error and
+			// hides stale or incomplete deployments.
+			if strings.HasPrefix(r.URL.Path, "/assets/") {
+				http.NotFound(w, r)
+				return
+			}
 		}
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		r.URL.Path = "/"
 		assets.ServeHTTP(w, r)
 	})

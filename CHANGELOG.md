@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [1.8.5] - 2026-09-18
+
+### Fixed
+
+- 静态资源缺失时返回 404，不再错误回退到 `index.html`；避免旧缓存 chunk 被当成 HTML 返回，导致动态模块 MIME 错误和侧边栏空白。
+- 根 HTML 使用 `no-cache, no-store, must-revalidate`，部署更新后浏览器会重新获取最新 chunk 清单。
+- 新增缺失 chunk 和 HTML 缓存策略回归测试。
+
+### Notes
+
+- 浏览器对 `attribution-reporting`、`private-aggregation`、`join-ad-interest-group`、`run-ad-auction` 的警告来自反向代理附加的 Permissions-Policy 指令，不影响应用代码；应用自身只声明 camera、microphone、geolocation。
+
 ## [1.8.4] - 2026-09-18
 
 ### Fixed

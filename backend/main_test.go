@@ -756,3 +756,22 @@ func TestTeachingSiteRejectsUnsafeOrIncompleteZIP(t *testing.T) {
 		})
 	}
 }
+
+func TestMissingFrontendAssetIs404AndHTMLIsNotCached(t *testing.T) {
+	db := testStore(t)
+	s := &server{db: db, public: os.DirFS("../frontend/dist")}
+	mux := http.NewServeMux()
+	s.routes(mux)
+	handler := s.requireTeacher(mux)
+	response := apiRequest(t, handler, http.MethodGet, "/assets/stale-chunk.js", "", nil)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("missing asset status = %d", response.Code)
+	}
+	response = apiRequest(t, handler, http.MethodGet, "/", "", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("index status = %d", response.Code)
+	}
+	if got := response.Header().Get("Cache-Control"); got != "no-cache, no-store, must-revalidate" {
+		t.Fatalf("index cache policy = %q", got)
+	}
+}

@@ -1,5 +1,7 @@
 package main
 
+import "time"
+
 // This file is the single catalogue of values that cross a HTTP/SQLite
 // boundary. Keeping request, response and persistence shapes together makes
 // the JSON contract visible without having to search through handlers.
@@ -146,8 +148,9 @@ type scheduleChangeInput struct {
 
 // siteSettings contains the two public branding strings.
 type siteSettings struct {
-	Title    string `json:"title"`
-	Subtitle string `json:"subtitle"`
+	ChatEnabled bool   `json:"chatEnabled"`
+	Title       string `json:"title"`
+	Subtitle    string `json:"subtitle"`
 }
 
 // teacherAccount is the database representation of the sole teacher account.
@@ -374,4 +377,51 @@ type integrationClass struct {
 type integrationStudent struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+// Chat bodies are ephemeral; only student credentials enter SQLite.
+type chatSender struct {
+	Role string `json:"role"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+type chatMessage struct {
+	ID              string     `json:"id"`
+	Seq             uint64     `json:"seq"`
+	ClientMessageID string     `json:"clientMessageId"`
+	Sender          chatSender `json:"sender"`
+	Text            string     `json:"text"`
+	CreatedAt       time.Time  `json:"createdAt"`
+}
+type chatSnapshot struct {
+	RoomID         int64         `json:"roomId"`
+	Epoch          string        `json:"epoch"`
+	LatestSeq      uint64        `json:"latestSeq"`
+	Messages       []chatMessage `json:"messages"`
+	OnlineStudents int           `json:"onlineStudents"`
+	Paused         bool          `json:"paused"`
+}
+type chatIdentity struct {
+	TokenHash string `json:"-"`
+	RoomID    int64  `json:"roomId"`
+	ClassID   int64  `json:"classId"`
+	ClassName string `json:"className"`
+	Title     string `json:"title"`
+	StudentID int64  `json:"studentId"`
+	Name      string `json:"name"`
+	ExpiresAt int64  `json:"expiresAt"`
+}
+type chatRoomInfo struct {
+	RoomID         int64  `json:"roomId"`
+	ClassID        int64  `json:"classId"`
+	ClassName      string `json:"className"`
+	Title          string `json:"title"`
+	MessageCount   int    `json:"messageCount"`
+	OnlineStudents int    `json:"onlineStudents"`
+	Paused         bool   `json:"paused"`
+}
+type chatMessageInput struct {
+	Text            string `json:"text"`
+	ClientMessageID string `json:"clientMessageId"`
+	Epoch           string `json:"epoch"`
 }

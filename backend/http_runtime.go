@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func runHTTP(addr string, handler http.Handler) error {
+func runHTTP(addr string, handler http.Handler, beforeShutdown ...func()) error {
 	httpServer := &http.Server{
 		Addr:              addr,
 		Handler:           handler,
@@ -35,6 +35,9 @@ func runHTTP(addr string, handler http.Handler) error {
 		}
 		return err
 	case <-stop:
+		for _, stopService := range beforeShutdown {
+			stopService()
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		return httpServer.Shutdown(ctx)
@@ -60,11 +63,32 @@ func (s *server) maintenance(next http.Handler) http.Handler {
 		if r.Method == http.MethodPost && r.URL.Path == "/api/admin/restore" {
 			s.maintenanceMu.Lock()
 			defer s.maintenanceMu.Unlock()
-		} else {
-			s.maintenanceMu.RLock()
-			defer s.maintenanceMu.RUnlock()
+			next.ServeHTTP(w, r)
+			return
 		}
+		gated := s.chat != nil && chatRequest(r.URL.Path, r.Method)
+		if gated && !bufferChatBody(w, r) {
+			return
+		}
+		s.maintenanceMu.RLock()
+		if gated {
+			s.chatAccessMu.Lock()
+		}
+		var once sync.Once
+		release := func() {
+			once.Do(func() {
+				if gated {
+					s.chatAccessMu.Unlock()
+				}
+				s.maintenanceMu.RUnlock()
+			})
+		}
+		defer release()
+		r = r.WithContext(context.WithValue(r.Context(), requestLeaseKey{}, release))
 		next.ServeHTTP(w, r)
+		if gated && chatChangesIdentity(r.URL.Path, r.Method) {
+			s.reconcileChat()
+		}
 	})
 }
 

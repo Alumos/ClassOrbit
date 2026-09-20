@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-const currentSchemaVersion = 4
+const currentSchemaVersion = 5
 
 // schemaMigration is append-only. The original ClassOrbit schema predates
 // versioned migrations, so migrate() first guarantees the baseline and then
@@ -28,6 +28,7 @@ func (s *store) applyVersionedMigrations() error {
 		{version: 2, apply: migrateTeachingSites},
 		{version: 3, apply: migrateQRLogin},
 		{version: 4, apply: migrateStorageIndexes},
+		{version: 5, apply: migrateStudentChat},
 	}
 	for _, migration := range migrations {
 		var applied bool
@@ -205,4 +206,38 @@ func migrationColumnExists(tx *sql.Tx, table, column string) (bool, error) {
 		}
 	}
 	return false, rows.Err()
+}
+
+// Credentials are the only durable chat data. Triggers revoke them in the same
+// transaction as attendance/roster changes, including non-HTTP store callers.
+func migrateStudentChat(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+ CREATE TABLE IF NOT EXISTS student_chat_sessions (
+   token_hash TEXT PRIMARY KEY,
+   student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+   attendance_session_id INTEGER NOT NULL REFERENCES attendance_sessions(id) ON DELETE CASCADE,
+   created_at INTEGER NOT NULL,
+   expires_at INTEGER NOT NULL,
+   UNIQUE(student_id, attendance_session_id)
+ );
+ CREATE INDEX IF NOT EXISTS idx_student_chat_expires ON student_chat_sessions(expires_at);
+ CREATE INDEX IF NOT EXISTS idx_student_chat_attendance ON student_chat_sessions(attendance_session_id);
+ CREATE TRIGGER IF NOT EXISTS revoke_chat_attendance AFTER UPDATE OF status,deleted_at ON attendance_sessions
+ WHEN NEW.status != 'active' OR NEW.deleted_at IS NOT NULL BEGIN
+   DELETE FROM student_chat_sessions WHERE attendance_session_id=NEW.id;
+ END;
+ CREATE TRIGGER IF NOT EXISTS revoke_chat_record AFTER UPDATE OF status ON attendance_records
+ WHEN NEW.status NOT IN ('present','late') BEGIN
+   DELETE FROM student_chat_sessions WHERE attendance_session_id=NEW.session_id AND student_id=NEW.student_id;
+ END;
+ CREATE TRIGGER IF NOT EXISTS revoke_chat_student AFTER UPDATE OF deleted_at,class_id ON students
+ WHEN NEW.deleted_at IS NOT NULL OR NEW.class_id != OLD.class_id BEGIN
+   DELETE FROM student_chat_sessions WHERE student_id=NEW.id;
+ END;
+ CREATE TRIGGER IF NOT EXISTS revoke_chat_class AFTER UPDATE OF deleted_at ON classes
+ WHEN NEW.deleted_at IS NOT NULL BEGIN
+   DELETE FROM student_chat_sessions WHERE attendance_session_id IN (SELECT id FROM attendance_sessions WHERE class_id=NEW.id);
+ END;
+ `)
+	return err
 }

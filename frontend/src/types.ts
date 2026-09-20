@@ -75,7 +75,7 @@ export type AttendanceSuggestion = {
 
 export type Dashboard = { classCount: number; studentCount: number; totalScore: number; activeSessions: number }
 
-export type SiteSettings = { title: string; subtitle: string }
+export type SiteSettings = { title: string; subtitle: string; chatEnabled?: boolean }
 export type AuthStatus = { initialized: boolean; authenticated: boolean; username: string }
 export type BuildInfo = { version: string; commit: string }
 export type PublicStudent = { id: number; studentNo: string; name: string; checkedIn: boolean }
@@ -124,3 +124,9 @@ export type ScheduleChange = {
 }
 
 export type ScheduleData = { lessons: ScheduleLesson[]; changes: ScheduleChange[]; settings: ScheduleSettings }
+
+export type ChatSender = { role: 'student' | 'teacher'; id: string; name: string }
+export type ChatMessage = { id: string; seq: number; clientMessageId: string; sender: ChatSender; text: string; createdAt: string }
+export type ChatSnapshot = { roomId: number; epoch: string; latestSeq: number; messages: ChatMessage[]; onlineStudents: number; paused: boolean }
+export type ChatIdentity = { roomId: number; classId: number; className: string; title: string; studentId: number; name: string; expiresAt: number }
+export type ChatRoom = { roomId: number; classId: number; className: string; title: string; messageCount: number; onlineStudents: number; paused: boolean }

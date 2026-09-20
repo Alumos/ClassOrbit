@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ExternalLink, FileCode2, Globe2, GraduationCap, LayoutGrid, RefreshCw } from 'lucide-react'
+import { MessageCircle, ExternalLink, FileCode2, Globe2, GraduationCap, LayoutGrid, RefreshCw } from 'lucide-react'
 import { api } from '../api'
 import { Button, EmptyState, SiteFooter } from '../ui'
 import type { NavigationItem, SiteSettings } from '../types'
@@ -35,8 +35,8 @@ export function StudentNavigationPage() {
       <section className="checkin-panel navigation-panel">
         {items === null && !error && <div className="navigation-loading" role="status"><span className="page-module-loading" /><span>正在加载学习导航</span></div>}
         {error && <EmptyState icon={<Globe2 size={22} />} title="导航加载失败" detail={error} action={<Button variant="outline" onClick={() => void load()}><RefreshCw size={15} />重新加载</Button>} />}
-        {items?.length === 0 && <EmptyState icon={<LayoutGrid size={22} />} title="暂无学习网站" detail="老师还没有配置课堂导航。" />}
-        {items && items.length > 0 && <div className="navigation-grid">{items.map(item => <a key={item.id} className="navigation-card" href={item.url} target="_blank" rel="noopener noreferrer" title={item.title}><NavigationIcon item={item} /><div className="navigation-card-copy"><strong>{item.title}</strong><span>{item.kind === 'site' ? 'ClassOrbit 教学网页' : getHostname(item.url)}</span></div><ExternalLink size={16} aria-hidden="true" /></a>)}</div>}
+        {items?.length === 0 && !settings.chatEnabled && <EmptyState icon={<LayoutGrid size={22} />} title="暂无学习网站" detail="老师还没有配置课堂导航。" />}
+        {(settings.chatEnabled || (items && items.length > 0)) && <div className="navigation-grid">{settings.chatEnabled && <a className="navigation-card" href="/chat" target="_blank" rel="noopener noreferrer"><span className="navigation-icon"><MessageCircle size={22} /></span><div className="navigation-card-copy"><strong>班级聊天室</strong><span>本场签到后进入 · 课堂交流</span></div><ExternalLink size={16} aria-hidden="true" /></a>}{items?.map(item => <a key={item.id} className="navigation-card" href={item.url} target="_blank" rel="noopener noreferrer" title={item.title}><NavigationIcon item={item} /><div className="navigation-card-copy"><strong>{item.title}</strong><span>{item.kind === 'site' ? 'ClassOrbit 教学网页' : getHostname(item.url)}</span></div><ExternalLink size={16} aria-hidden="true" /></a>)}</div>}
       </section>
     </div>
     <SiteFooter note="课堂学习资源导航" />

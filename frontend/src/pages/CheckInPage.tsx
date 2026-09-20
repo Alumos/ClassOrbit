@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowRight, BookOpenCheck, CheckCircle2, GraduationCap, Search, ShieldCheck } from 'lucide-react'
 import { api, json } from '../api'
+import { chatApi } from '../chatApi'
 import { Select, SelectItem } from '../select'
 import { Button, EmptyState, Input, SiteFooter } from '../ui'
 import type { ClassItem, PublicRoster, PublicStudent, SiteSettings } from '../types'
@@ -8,6 +9,7 @@ import type { ClassItem, PublicRoster, PublicStudent, SiteSettings } from '../ty
 const NAVIGATION_COUNTDOWN_SECONDS = 5
 
 export function CheckInPage() {
+  const [chatName, setChatName] = useState('')
   const [classes, setClasses] = useState<ClassItem[]>([])
   const [classId, setClassId] = useState(0)
   const [roster, setRoster] = useState<PublicRoster | null>(null)
@@ -43,6 +45,12 @@ export function CheckInPage() {
     const redirect = window.setTimeout(() => window.location.replace('/navigation'), NAVIGATION_COUNTDOWN_SECONDS * 1000)
     return () => { window.clearInterval(tick); window.clearTimeout(redirect) }
   }, [result])
+  useEffect(() => {
+    if (!settings.chatEnabled) return
+    let active = true
+    chatApi<{ name: string }>('/public/chat/session').then(identity => { if (active) setChatName(identity.name) }).catch(() => undefined)
+    return () => { active = false }
+  }, [settings.chatEnabled])
   const needsPinyin = /[a-z]/i.test(query)
   useEffect(() => {
     if (!roster || !needsPinyin || pinyinIndex.size) return
@@ -72,6 +80,7 @@ export function CheckInPage() {
   return <main className="checkin-page">
     <header className="checkin-header"><a href="/" className="checkin-brand"><span className="brand-mark"><GraduationCap size={19} /></span><div><strong>{settings.title}</strong><span>{settings.subtitle}</span></div></a><span className="secure-note"><ShieldCheck size={15} />仅用于课堂签到</span></header>
     <div className="checkin-shell">
+      {chatName && !result && <div className="chat-checkin-resume"><span>{chatName}，你已完成本场签到。</span><a className="button button-outline" href="/chat">进入聊天室</a></div>}
       {result ? <section className="checkin-result"><span className="success-ring"><CheckCircle2 size={38} /></span><p>签到成功</p><h1>{result.name}</h1><span>系统已记录你的到课时间</span><div className="checkin-countdown" role="timer" aria-live="polite"><strong>{countdown}</strong><span>秒后进入学习导航</span></div><Button onClick={enterNavigation}>立即进入<ArrowRight size={15} /></Button></section> : <>
         <div className="checkin-heading"><span className="checkin-symbol"><BookOpenCheck size={22} /></span><div><h1>课堂签到</h1><p>选择你的班级和姓名完成签到。</p></div></div>
         <section className="checkin-panel">

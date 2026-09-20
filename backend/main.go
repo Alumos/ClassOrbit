@@ -30,6 +30,8 @@ type server struct {
 	public           fs.FS
 	integrationToken string
 	maintenanceMu    sync.RWMutex
+	chatAccessMu     sync.Mutex
+	chat             *chatHub
 	siteMu           sync.Mutex
 	siteAccessMu     sync.RWMutex
 	siteAccess       map[string]map[string]bool
@@ -50,7 +52,13 @@ func main() {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		log.Fatal(err)
 	}
-	db, err := openStore(databasePath(dataDir))
+	dbPath := databasePath(dataDir)
+	if backup, err := backupBeforeUpgrade(dbPath); err != nil {
+		log.Fatalf("database upgrade backup failed: %v", err)
+	} else if backup != "" {
+		log.Printf("database rollback backup ready: %s", backup)
+	}
+	db, err := openStore(dbPath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -75,13 +83,18 @@ func main() {
 		log.Printf("warning: teaching-site cache cleanup failed: %v", err)
 	}
 	defer func() { _ = s.db.Close() }()
+	if env("CHAT_ENABLED", "false") == "true" {
+		s.chat = newChatHub()
+	}
+	stopChat := s.startChatScheduler()
+	defer stopChat()
 	stopBackups := s.startBackupScheduler()
 	defer stopBackups()
 	mux := http.NewServeMux()
 	s.routes(mux)
 	addr := env("ADDR", "127.0.0.1:8080")
 	log.Printf("ClassOrbit server running at http://%s", addr)
-	if err := runHTTP(addr, logRequests(securityHeaders(rateLimitPublic(s.maintenance(s.requireTeacher(mux)))))); err != nil {
+	if err := runHTTP(addr, logRequests(securityHeaders(rateLimitPublic(s.maintenance(s.requireTeacher(mux))))), stopChat); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -132,6 +145,7 @@ func databasePath(dataDir string) string {
 }
 
 func (s *server) routes(mux *http.ServeMux) {
+	s.chatRoutes(mux)
 	// Public bootstrap and authentication. QR status is public because the
 	// computer does not have a session until the phone approves the request.
 	mux.HandleFunc("GET /api/health", s.health)
@@ -565,11 +579,13 @@ func (s *server) getPublicClasses(w http.ResponseWriter, _ *http.Request) {
 
 func (s *server) getSettings(w http.ResponseWriter, _ *http.Request) {
 	data, err := s.db.settings()
+	data.ChatEnabled = s.chat != nil
 	respond(w, data, err)
 }
 
 func (s *server) getPublicSettings(w http.ResponseWriter, _ *http.Request) {
 	data, err := s.db.settings()
+	data.ChatEnabled = s.chat != nil
 	respond(w, data, err)
 }
 
@@ -588,6 +604,7 @@ func (s *server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data, err := s.db.updateSettings(in)
+	data.ChatEnabled = s.chat != nil
 	respond(w, data, err)
 }
 
@@ -751,7 +768,24 @@ func (s *server) checkIn(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	data, err := s.db.checkIn(in.ClassID, in.StudentID)
+	if s.chat == nil {
+		data, err := s.db.checkIn(in.ClassID, in.StudentID)
+		respond(w, data, err)
+		return
+	}
+	if !requireChatOrigin(w, r) {
+		return
+	}
+	token, err := randomURLToken()
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	now := time.Now()
+	data, err := s.db.checkInWithChat(in.ClassID, in.StudentID, hashSessionToken(token), studentCookieHash(r), now)
+	if err == nil {
+		setStudentChatCookie(w, r, token, now.Add(studentChatLifetime))
+	}
 	respond(w, data, err)
 }
 

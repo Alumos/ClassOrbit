@@ -216,3 +216,36 @@ func restoreSafetyBackup(safetyPath, currentPath string) (*store, error) {
 	}
 	return openStore(currentPath)
 }
+
+// Called only at process startup, before openStore can migrate the live file.
+// This copy is intentionally excluded from daily backup retention pruning.
+func backupBeforeUpgrade(path string) (string, error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+	fileURL := (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
+	db, err := sql.Open("sqlite", fileURL+"?mode=ro&_pragma=busy_timeout(5000)")
+	if err != nil {
+		return "", err
+	}
+	defer db.Close()
+	old := &store{DB: db, path: path}
+	version, err := old.schemaVersion()
+	if err != nil {
+		return "", err
+	}
+	if version >= currentSchemaVersion {
+		return "", nil
+	}
+	directory := filepath.Join(filepath.Dir(path), "backups")
+	if err = os.MkdirAll(directory, 0o750); err != nil {
+		return "", err
+	}
+	target := filepath.Join(directory, fmt.Sprintf("classorbit-before-schema-%d-%s.db", currentSchemaVersion, time.Now().Format("20060102-150405.000000000")))
+	if err = old.backupTo(target); err != nil {
+		return "", err
+	}
+	return target, nil
+}

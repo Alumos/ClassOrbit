@@ -142,6 +142,14 @@ func (s *server) restoreBackup(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, "备份中的导航数据无效")
 		return
 	}
+	// Revoke before the safety copy: rollback must not resurrect credentials.
+	if err := s.db.clearChatTokens(); err != nil {
+		respond(w, nil, err)
+		return
+	}
+	if s.chat != nil {
+		s.chat.reset(false)
+	}
 	safetyPath, err := s.db.createSafetyBackup()
 	if err != nil {
 		respond(w, nil, err)
@@ -154,7 +162,7 @@ func (s *server) restoreBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	if _, err = tx.Exec(`DELETE FROM teacher_sessions; DELETE FROM teacher_qr_logins;`); err == nil {
+	if _, err = tx.Exec(`DELETE FROM teacher_sessions; DELETE FROM teacher_qr_logins; DELETE FROM student_chat_sessions;`); err == nil {
 		err = addAudit(tx, "backup.restore", "system", 0, "恢复数据库备份", "恢复前安全备份："+filepath.Base(safetyPath))
 	}
 	if err == nil {

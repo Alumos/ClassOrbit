@@ -369,7 +369,7 @@ func TestStorageMigrationIsAppendOnlyAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	var version int
-	if err := s.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 4 {
+	if err := s.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != currentSchemaVersion {
 		t.Fatalf("version %d: %v", version, err)
 	}
 	after := tableSnapshot(t, s, "schema_migrations")

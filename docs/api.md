@@ -152,3 +152,23 @@ GET /api/integration/classes?teacher_username=teacher
 替换前保存安全副本，在候选库事务内撤销会话/扫码凭证并写审计；替换失败时保留安全副本供回滚。
 成功后返回 `{ ok, safetyBackup, message }` 并清除登录 Cookie，需重新登录。
 自动备份与安全副本保存在原数据卷，不等同于异地备份。
+
+## 班级聊天室
+
+当 `CHAT_ENABLED=true` 时，学生导航包含内置 `/chat` 页面。聊天消息使用有界内存暂存，不写 SQLite；单条消息最多 500 个 Unicode 字符，每房最多 500 条/1MiB，最多保留 2 小时。结束课堂、教师清空、服务重启或恢复数据库都会清除消息。学生必须先在当前浏览器完成本场签到，服务端通过 `classorbit_student` HttpOnly Cookie 校验当前学生和考勤场次；不能通过 URL、姓名或 localStorage 领取身份。
+
+学生聊天接口（均需要学生 Cookie）：
+
+- `GET /api/public/chat/session`：读取当前学生和课堂上下文。
+- `GET /api/public/chat/events`：SSE 实时事件，初次连接发送最近最多 100 条快照。
+- `POST /api/public/chat/messages`：发送 `{ text, clientMessageId, epoch }`，服务端生成发送者和时间。
+- `DELETE /api/public/chat/session`：退出当前浏览器学生身份，不改变考勤。
+
+教师接口（需要教师会话）：
+
+- `GET /api/chat/rooms?classId=...`：当前活动课堂。
+- `GET /api/chat/rooms/{sessionId}/events`、`POST /api/chat/rooms/{sessionId}/messages`：查看或发送消息。
+- `PATCH /api/chat/rooms/{sessionId}`：`{ paused: boolean }`，暂停/恢复学生发言。
+- `DELETE /api/chat/rooms/{sessionId}/messages`：清空本场消息并更换 epoch。
+
+生产反向代理必须允许 SSE 长连接并禁用缓冲，读取超时需大于 20 秒心跳周期（建议 75 秒）。如代理改写 Host，可设置 `CHAT_ORIGIN=https://实际访问域名`。部署时保持 `CHAT_ENABLED=false` 可完全关闭入口和聊天接口，不影响原签到功能。

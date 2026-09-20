@@ -1,13 +1,14 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import {
   BarChart3, BookOpenCheck, CheckCircle2, ChevronRight, ClipboardCheck, GraduationCap,
-  Compass, LayoutDashboard, LogOut, Menu, PanelLeftClose, ScanLine, Settings2, Users, X,
+  MessageCircle, Compass, LayoutDashboard, LogOut, Menu, PanelLeftClose, ScanLine, Settings2, Users, X,
 } from 'lucide-react'
 import { api } from './api'
 import { Select, SelectItem } from './select'
 import { Button, DeploymentVersion, SiteFooter } from './ui'
 import type { AttendanceSuggestion, ClassItem, Dashboard, Notify, SiteSettings } from './types'
 
+const ChatManagementPage = lazy(() => import('./pages/ChatManagementPage').then(({ ChatManagementPage }) => ({ default: ChatManagementPage })))
 const PointsPage = lazy(() => import('./pages/PointsPage').then(({ PointsPage }) => ({ default: PointsPage })))
 const OverviewPage = lazy(() => import('./pages/OverviewPage').then(({ OverviewPage }) => ({ default: OverviewPage })))
 const ClassesPage = lazy(() => import('./pages/ClassesPage').then(({ ClassesPage }) => ({ default: ClassesPage })))
@@ -22,6 +23,7 @@ const nav = [
   { id: 'overview', label: '总览', icon: LayoutDashboard },
   { id: 'classes', label: '班级与名单', icon: Users },
   { id: 'attendance', label: '考勤管理', icon: ClipboardCheck },
+  { id: 'chat', label: '聊天室', icon: MessageCircle },
   { id: 'navigation', label: '学生导航', icon: Compass },
   { id: 'settings', label: '系统设置', icon: Settings2 },
 ] as const
@@ -70,7 +72,7 @@ export function TeacherApp({ username, settings, onSettingsChange, onLogout }: {
       <div className="brand"><span className="brand-mark"><GraduationCap size={19} /></span><div><strong>{settings.title}</strong><span>{settings.subtitle}</span></div><Button className="sidebar-close" variant="ghost" size="icon" aria-label="关闭导航" onClick={() => setSidebarOpen(false)}><PanelLeftClose size={17} /></Button></div>
       <nav className="main-nav" aria-label="教师后台导航">
         <span className="nav-label">工作台</span>
-        {nav.map(item => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => switchPage(item.id)}><item.icon size={16} /><span>{item.label}</span>{page === item.id && <ChevronRight className="nav-chevron" size={14} />}</button>)}
+        {nav.filter(item => item.id !== 'chat' || settings.chatEnabled).map(item => <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => switchPage(item.id)}><item.icon size={16} /><span>{item.label}</span>{page === item.id && <ChevronRight className="nav-chevron" size={14} />}</button>)}
         <span className="nav-label nav-label-secondary">学生入口</span>
         <a href="/checkin" target="_blank" rel="noreferrer"><BookOpenCheck size={16} /><span>自助签到页</span></a>
         <a href="/navigation" target="_blank" rel="noreferrer"><Compass size={16} /><span>学习导航页</span></a>
@@ -88,6 +90,7 @@ export function TeacherApp({ username, settings, onSettingsChange, onLogout }: {
         {page === 'overview' && <OverviewPage classes={classes} dashboard={dashboard} onNavigate={switchPage} />}
         {page === 'classes' && <ClassesPage classes={classes} notify={notify} onDataChange={refresh} onSelectClass={id => { setClassId(id); setPage('points') }} />}
         {page === 'attendance' && <AttendancePage classes={classes} classId={classId} setClassId={setClassId} notify={notify} onDataChange={refresh} initialSuggestion={attendanceSuggestion} onSuggestionConsumed={() => setAttendanceSuggestion(null)} />}
+        {page === 'chat' && <ChatManagementPage classId={classId} notify={notify} />}
         {page === 'navigation' && <NavigationSettingsPage notify={notify} onDirtyChange={setNavigationDirty} />}
         {page === 'settings' && <SettingsPage settings={settings} classes={classes} onChange={onSettingsChange} notify={notify} />}
       </Suspense></div>

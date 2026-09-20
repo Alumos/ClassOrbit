@@ -991,31 +991,7 @@ func attendanceTitleFromString(className, sessionAt string) string {
 	return attendanceTitle(className, value)
 }
 func (s *store) checkIn(classID, studentID int64) (checkInResponse, error) {
-	var sessionID int64
-	var name, status string
-	err := s.QueryRow(`SELECT a.id,st.name,r.status
-FROM attendance_sessions a JOIN attendance_records r ON r.session_id=a.id
-JOIN students st ON st.id=r.student_id
-	WHERE a.class_id=? AND a.status='active' AND a.deleted_at IS NULL
-AND st.deleted_at IS NULL AND st.id=?`, classID, studentID).Scan(&sessionID, &name, &status)
-	if errors.Is(err, sql.ErrNoRows) {
-		return checkInResponse{}, fmt.Errorf("%w: 未找到开放签到或学生信息不匹配", errConflict)
-	}
-	if err != nil {
-		return checkInResponse{}, err
-	}
-	if status != "absent" {
-		return checkInResponse{}, fmt.Errorf("%w: %s 已完成签到，请勿重复提交", errConflict, name)
-	}
-	res, err := s.Exec(`UPDATE attendance_records SET status='present',checked_at=datetime('now','localtime'),method='self' WHERE session_id=? AND student_id=? AND status='absent'`, sessionID, studentID)
-	if err != nil {
-		return checkInResponse{}, err
-	}
-	changed, _ := res.RowsAffected()
-	if changed == 0 {
-		return checkInResponse{}, fmt.Errorf("%w: %s 已完成签到，请勿重复提交", errConflict, name)
-	}
-	return checkInResponse{OK: true, Name: name, Message: "签到成功"}, nil
+	return s.checkInWithChat(classID, studentID, "", "", time.Now())
 }
 
 func (s *store) settings() (siteSettings, error) {

@@ -4,6 +4,7 @@ import { api, json } from './api'
 import { Button, SiteFooter } from './ui'
 import type { AuthStatus, SiteSettings } from './types'
 
+const StudentChatPage = lazy(() => import('./pages/StudentChatPage').then(({ StudentChatPage }) => ({ default: StudentChatPage })))
 const CheckInPage = lazy(() => import('./pages/CheckInPage').then(({ CheckInPage }) => ({ default: CheckInPage })))
 const StudentNavigationPage = lazy(() => import('./pages/StudentNavigationPage').then(({ StudentNavigationPage }) => ({ default: StudentNavigationPage })))
 const TeacherApp = lazy(() => import('./TeacherApp').then(({ TeacherApp }) => ({ default: TeacherApp })))
@@ -11,6 +12,7 @@ const QRCodeLoginPanel = lazy(() => import('./QRCodeLogin').then(({ QRCodeLoginP
 const QRLoginApprovalPage = lazy(() => import('./QRCodeLogin').then(({ QRLoginApprovalPage }) => ({ default: QRLoginApprovalPage })))
 
 export default function App() {
+  if (window.location.pathname === '/chat' || window.location.pathname === '/chat/') return <Suspense fallback={<Loading />}><StudentChatPage /></Suspense>
   if (window.location.pathname.startsWith('/checkin')) return <Suspense fallback={<Loading />}><CheckInPage /></Suspense>
   if (window.location.pathname.startsWith('/navigation')) return <Suspense fallback={<Loading />}><StudentNavigationPage /></Suspense>
   if (window.location.pathname.startsWith('/qr-login')) return <Suspense fallback={<Loading />}><QRLoginApprovalPage /></Suspense>

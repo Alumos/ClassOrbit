@@ -286,3 +286,9 @@ make version
 `make test` 会执行前端生产构建、Vitest/React Testing Library 测试以及 Go 后端/API 测试。`make release-check` 校验版本文件和更新日志一致性，`make version` 显示本地构建将写入的版本和提交号。
 
 更完整的性能、安全和功能改进建议见 [`docs/improvement-roadmap.md`](docs/improvement-roadmap.md)。
+
+### 班级聊天室
+
+聊天室默认关闭。设置 `CHAT_ENABLED=true` 后，学生学习导航会显示内置聊天室入口。只有当前课堂完成签到的学生能进入对应场次；消息只在内存中限量暂存，服务重启、结束课堂或教师清空后消失，不进入 SQLite 备份。反向代理需要支持 SSE 长连接；如代理改写 Host，可设置 `CHAT_ORIGIN`。
+
+数据库结构升级到新版本时，程序会在迁移前自动在数据目录 `backups/` 生成 `classorbit-before-schema-*.db` 回退副本。若需要回退代码，切回原 Git 标签（当前基线为 `v1.8.8`）并使用升级前数据库副本；不要用旧程序直接打开已升级数据库。

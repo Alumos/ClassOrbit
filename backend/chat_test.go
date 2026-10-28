@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -460,8 +461,12 @@ func TestChatUpgradeBackup(t *testing.T) {
 	if again, err := backupBeforeUpgrade(s.path); err != nil || again != "" {
 		t.Fatal("created redundant backup", again, err)
 	}
-	if info, err := os.Stat(backup); err != nil || info.Mode().Perm() != 0600 {
-		t.Fatal("unsafe backup permissions", err)
+	info, statErr := os.Stat(backup)
+	if statErr != nil {
+		t.Fatal("unsafe backup permissions", statErr)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+		t.Fatal("unsafe backup permissions", statErr)
 	}
 }
 

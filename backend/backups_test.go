@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -451,7 +452,12 @@ func TestAutomaticBackupReplacesCorruptDailyFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(rebuilt)
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil {
+		t.Fatalf("backup mode: %v %v", info, err)
+	}
+	// Windows only emulates POSIX permission bits; the 0600 assertion is
+	// meaningful on the Unix production target, not on Windows hosts.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatalf("backup mode: %v %v", info, err)
 	}
 }

@@ -32,7 +32,7 @@ func TestTeachingSiteBackupReopen(t *testing.T) {
 	cookie := responseCookie(t, setup)
 	response := teachingSiteAPIRequest(t, handler, http.MethodPost, "/api/navigation/sites", "folder", "升级练习", []teachingSiteTestFile{
 		{Name: "index.html", Path: "lesson/index.html", Data: []byte("<h1>upgrade</h1>")},
-		{Name: "课 #?.js", Path: "lesson/assets/课 #?.js", Data: []byte("console.log('upgrade')")},
+		{Name: "课 程#1.js", Path: "lesson/assets/课 程#1.js", Data: []byte("console.log('upgrade')")},
 	}, cookie)
 	if response.Code != http.StatusCreated {
 		t.Fatalf("upload: %s", response.Body.String())
@@ -74,7 +74,7 @@ func TestTeachingSiteBackupReopen(t *testing.T) {
 		if err != nil || len(after) != 1 || after[0].URL != before[0].URL || *after[0].Site != *before[0].Site {
 			t.Fatalf("reopen navigation: %+v, %v", after, err)
 		}
-		for suffix, body := range map[string]string{"": "<h1>upgrade</h1>", "assets/%E8%AF%BE%20%23%3F.js": "console.log('upgrade')"} {
+		for suffix, body := range map[string]string{"": "<h1>upgrade</h1>", "assets/%E8%AF%BE%20%E7%A8%8B%231.js": "console.log('upgrade')"} {
 			response := apiRequest(t, handler, http.MethodGet, after[0].URL+suffix, "", nil)
 			if response.Code != http.StatusOK || response.Body.String() != body {
 				t.Fatalf("restored page: %d %s", response.Code, response.Body.String())

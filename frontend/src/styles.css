@@ -710,7 +710,7 @@ td { height: 43px; padding: 6px 12px; }
 .week-nav-button:hover { background: var(--subtle); }
 .week-toolbar-hint { color: var(--muted); font-size: var(--text-xs); }
 .week-grid-scroll { overflow: auto; max-height: 62vh; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
-.week-grid { display: grid; grid-template-columns: 84px repeat(5, minmax(160px, 1fr)); grid-template-rows: 44px; grid-auto-rows: 72px; grid-auto-flow: row; align-content: start; }
+.week-grid { display: grid; grid-template-columns: 84px repeat(5, minmax(120px, 1fr)); grid-template-rows: 44px; grid-auto-rows: 72px; grid-auto-flow: row; align-content: start; }
 .week-corner, .week-day-head { position: sticky; top: 0; z-index: 3; background: #fafafa; border-bottom: 1px solid var(--border); }
 .week-corner { left: 0; z-index: 4; display: flex; align-items: center; justify-content: center; height: 44px; padding: 0 6px; color: var(--muted); font-size: var(--text-xs); }
 .week-day-head { display: flex; flex-direction: column; justify-content: center; gap: 1px; height: 44px; padding: 0 8px; border-left: 1px solid var(--border); overflow: hidden; }
@@ -739,7 +739,7 @@ td { height: 43px; padding: 6px 12px; }
 .week-card:hover .week-card-undo, .week-card-undo:focus-visible { opacity: 1; }
 .week-cell.is-occupied .week-card { border-style: dashed; opacity: .8; }
 @media (max-width: 900px) {
-  .week-grid { min-width: 720px; }
+  .week-grid { min-width: 620px; }
   .week-card-undo { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -759,16 +759,19 @@ td { height: 43px; padding: 6px 12px; }
 .week-cell.is-occupied { background: #f7f1ef; }
 
 /* 右键菜单 */
-.week-menu-backdrop { position: fixed; inset: 0; z-index: 60; }
-.week-context-menu { position: fixed; z-index: 61; min-width: 210px; max-height: 70vh; overflow: auto; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: 0 14px 34px rgba(0, 0, 0, .16); display: flex; flex-direction: column; gap: 2px; }
-.week-context-title { padding: 3px 8px 7px; margin-bottom: 3px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.week-context-menu button { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); font-size: var(--text-sm); text-align: left; cursor: pointer; }
-.week-context-menu button:hover { background: var(--subtle); }
-.week-context-menu button:focus-visible { outline: 2px solid #a1a1aa; outline-offset: -2px; }
-.week-context-danger { color: #b91c1c; }
 
 .week-card-occupied { border-left: 3px solid #c39a92; }
 .week-card-conflict { border-left: 3px solid #a89fc7; }
 .week-card-other { border-left: 3px solid #c2a880; }
 .week-card-rescheduled { border-left: 3px solid #9db79a; }
-.week-card:has(.week-card-undo) .week-card-class { padding-right: 20px; }
+.week-card:has(.week-card-menu) .week-card-class { padding-right: 20px; }
+
+/* 课程卡片菜单：沿用 .dropdown-content / .dropdown-item 的浮层样式 */
+.dropdown-label { padding: 4px 9px 7px; margin-bottom: 3px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: var(--text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dropdown-separator { height: 1px; margin: 4px 2px; background: var(--border); }
+.dropdown-item-danger { color: #b91c1c; }
+.dropdown-item-danger[data-highlighted] { background: #fef2f2; }
+.week-card-menu { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--muted); cursor: pointer; opacity: 0; transition: opacity .12s ease-out; }
+.week-card:hover .week-card-menu, .week-card-menu:focus-visible { opacity: 1; }
+@media (max-width: 900px) { .week-card-menu { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .week-card-menu { transition: none; } }

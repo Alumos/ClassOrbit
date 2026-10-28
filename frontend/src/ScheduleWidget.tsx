@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
   ArrowLeft, ArrowLeftRight, CalendarClock, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck,
-  FileSpreadsheet, MapPin, Pencil, Plus, Settings2, Trash2, UserRoundX, X,
+  FileSpreadsheet, MapPin, MoreHorizontal, Pencil, Plus, Settings2, Trash2, UserRoundX, X,
 } from 'lucide-react'
 import { api, json } from './api'
 import { Dialog } from './dialog'
+import { Menu, MenuItem, MenuLabel, MenuSeparator } from './menu'
 import { buildOccurrences, buildWeekGrid, changeNote, changeTagLabel, changeTagOf, dateAt, dateKey, findWeekCell, mondayOf, planDrop, semesterWeek, weekdayOf } from './scheduleModel'
 import type { Occurrence } from './scheduleModel'
 import { Select, SelectItem } from './select'
@@ -52,7 +53,7 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
   const fileRef = useRef<HTMLInputElement>(null)
   const [view, setView] = useState<'week' | 'regular'>('week')
   const [weekOffset, setWeekOffset] = useState(0)
-  const [cardMenu, setCardMenu] = useState<{ x: number; y: number; occurrence: Occurrence } | null>(null)
+  const [menuCard, setMenuCard] = useState('')
   const [dragFrom, setDragFrom] = useState<{ date: string; period: number } | null>(null)
   const [overCell, setOverCell] = useState('')
 
@@ -124,7 +125,7 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
   }
 
   const openChange = (item: Occurrence, mode: 'occupied' | 'rescheduled', tag = '') => {
-    setCardMenu(null)
+    setMenuCard('')
     const nextDay = dateAt(item.date, item.startTime); nextDay.setDate(nextDay.getDate() + 1)
     setChangeTarget(item); setChangeMode(mode)
     setChangeForm({ newDate: dateKey(nextDay), newStartTime: item.startTime, newEndTime: item.endTime, newClassId: String(item.classId), note: '', tag: mode === 'occupied' ? (tag || 'occupied') : '' })
@@ -243,14 +244,21 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
               {occurrence && <div className={`week-card week-card-${changeTagOf(occurrence.change) || 'normal'} ${dragging ? 'is-dragging' : ''}`}
                 draggable={cell?.state === 'lesson' || cell?.state === 'moved'}
                 onDragStart={event => { setDragFrom(target); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', key) }}
-                onDragEnd={() => { setDragFrom(null); setOverCell('') }} onContextMenu={event => { event.preventDefault(); setCardMenu({ x: event.clientX, y: event.clientY, occurrence }) }}>
+                onDragEnd={() => { setDragFrom(null); setOverCell('') }} onContextMenu={event => { event.preventDefault(); setMenuCard(key) }}>
                 <div className="week-card-main">
                   <strong className="week-card-class">{occurrence.className}{occurrence.change && <span className="week-card-badge">{changeTagLabel(changeTagOf(occurrence.change))}</span>}</strong>
                   <span className="week-card-course">{occurrence.lesson.course}</span>
                   <small className="week-card-meta"><MapPin size={11} />{occurrence.location}</small>
                 </div>
                 
-                {occurrence.change && <button className="week-card-undo" title="撤销本次变动" aria-label="撤销本次变动" onClick={event => { event.stopPropagation(); void undoChange(occurrence) }}><X size={12} /></button>}
+                <Menu open={menuCard === key} onOpenChange={open => setMenuCard(open ? key : '')} trigger={<button className="week-card-menu" type="button" aria-label="课程操作" title="更多操作" onClick={event => event.stopPropagation()}><MoreHorizontal size={13} /></button>}>
+                  <MenuLabel>{occurrence.className} · {occurrence.lesson.course}</MenuLabel>
+                  <MenuItem onSelect={() => openChange(occurrence, 'occupied', 'occupied')}><UserRoundX size={14} />标记被占课</MenuItem>
+                  <MenuItem onSelect={() => openChange(occurrence, 'occupied', 'conflict')}><CalendarClock size={14} />标记活动冲突</MenuItem>
+                  <MenuItem onSelect={() => openChange(occurrence, 'rescheduled')}><ArrowLeftRight size={14} />调整到其他时间</MenuItem>
+                  {occurrence.change && <MenuSeparator />}
+                  {occurrence.change && <MenuItem danger onSelect={() => void undoChange(occurrence)}><X size={14} />撤销本次变动</MenuItem>}
+                </Menu>
               </div>}
             </div>
           })}
@@ -258,16 +266,6 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
       </div>
     </div>
   </div>
-    {cardMenu && <>
-      <div className="week-menu-backdrop" onClick={() => setCardMenu(null)} onContextMenu={event => { event.preventDefault(); setCardMenu(null) }} />
-      <div className="week-context-menu" role="menu" style={{ left: cardMenu.x, top: cardMenu.y }}>
-        <span className="week-context-title">{cardMenu.occurrence.className} · {cardMenu.occurrence.lesson.course}</span>
-        <button role="menuitem" onClick={() => openChange(cardMenu.occurrence, 'occupied', 'occupied')}><UserRoundX size={14} />标记被占课</button>
-        <button role="menuitem" onClick={() => openChange(cardMenu.occurrence, 'occupied', 'conflict')}><CalendarClock size={14} />标记活动冲突</button>
-        <button role="menuitem" onClick={() => openChange(cardMenu.occurrence, 'rescheduled')}><ArrowLeftRight size={14} />调整到其他时间…</button>
-        {cardMenu.occurrence.change && <button role="menuitem" className="week-context-danger" onClick={() => { const item = cardMenu.occurrence; setCardMenu(null); void undoChange(item) }}><X size={14} />撤销本次变动</button>}
-      </div>
-    </>}
   </>
   const nextDateLabel = next ? (next.date === today ? '今天' : next.date === dateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)) ? '明天' : weekdays[weekdayOf(dateAt(next.date)) - 1] || next.date.slice(5)) : ''
   const editPeriod = data.settings.periods.find(item => item.period === editing?.period)

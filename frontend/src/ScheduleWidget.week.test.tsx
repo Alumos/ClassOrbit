@@ -137,3 +137,13 @@ describe('week timetable card menu', () => {
     expect(body.tag).toBe('conflict')
   })
 })
+
+  it('opens the same menu from the kebab button for touch', async () => {
+    localStorage.clear()
+    await openWeekBoard()
+    const button = document.querySelector('[aria-label="课程操作"]') as HTMLElement
+    fireEvent.pointerDown(button, { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.pointerUp(button)
+    fireEvent.click(button)
+    expect(await screen.findByText('标记被占课')).toBeTruthy()
+  })

@@ -1175,6 +1175,18 @@ func validateScheduleChange(in *scheduleChangeInput) string {
 	in.Date, in.NewDate = strings.TrimSpace(in.Date), strings.TrimSpace(in.NewDate)
 	in.NewStartTime, in.NewEndTime = normalizeClock(in.NewStartTime), normalizeClock(in.NewEndTime)
 	in.Note = strings.TrimSpace(in.Note)
+	in.Tag = strings.TrimSpace(in.Tag)
+	switch in.Tag {
+	case "", "occupied", "conflict", "other":
+	default:
+		return "变动标记不正确"
+	}
+	if in.Status == "occupied" && in.Tag == "" {
+		in.Tag = "occupied"
+	}
+	if in.Status == "rescheduled" {
+		in.Tag = ""
+	}
 	if _, err := time.Parse("2006-01-02", in.Date); err != nil {
 		return "原上课日期格式不正确"
 	}

@@ -45,7 +45,7 @@ describe('schedule occurrences', () => {
         newEndTime: '10:40',
         newClassId: 10,
         newClassName: '三 1 班',
-        note: '临时换课',
+        note: '临时换课', tag: '',
       }],
     }
     const items = buildOccurrences(changed, new Date(2026, 8, 7, 12), 3)

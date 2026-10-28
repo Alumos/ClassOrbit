@@ -1241,7 +1241,7 @@ ORDER BY l.weekday,l.period,l.id`)
 	rows.Close()
 
 	changes, err := s.Query(`SELECT ch.id,ch.lesson_id,ch.original_date,ch.status,ch.new_date,ch.new_start_time,ch.new_end_time,
-COALESCE(ch.new_class_id,0),COALESCE(c.name,''),ch.note
+COALESCE(ch.new_class_id,0),COALESCE(c.name,''),ch.note,ch.tag
 FROM schedule_changes ch LEFT JOIN classes c ON c.id=ch.new_class_id
 WHERE ch.original_date >= date('now','localtime','-35 days') OR ch.new_date >= date('now','localtime','-35 days')
 ORDER BY ch.original_date,ch.id`)
@@ -1251,7 +1251,7 @@ ORDER BY ch.original_date,ch.id`)
 	defer changes.Close()
 	for changes.Next() {
 		var change scheduleChange
-		if err := changes.Scan(&change.ID, &change.LessonID, &change.Date, &change.Status, &change.NewDate, &change.NewStartTime, &change.NewEndTime, &change.NewClassID, &change.NewClassName, &change.Note); err != nil {
+		if err := changes.Scan(&change.ID, &change.LessonID, &change.Date, &change.Status, &change.NewDate, &change.NewStartTime, &change.NewEndTime, &change.NewClassID, &change.NewClassName, &change.Note, &change.Tag); err != nil {
 			return data, err
 		}
 		data.Changes = append(data.Changes, change)
@@ -1347,10 +1347,10 @@ func (s *store) setScheduleChange(lessonID int64, in scheduleChangeInput) (sched
 		}
 		newClass = in.NewClassID
 	}
-	_, err := s.Exec(`INSERT INTO schedule_changes(lesson_id,original_date,status,new_date,new_start_time,new_end_time,new_class_id,note)
-VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(lesson_id,original_date) DO UPDATE SET
-status=excluded.status,new_date=excluded.new_date,new_start_time=excluded.new_start_time,new_end_time=excluded.new_end_time,new_class_id=excluded.new_class_id,note=excluded.note,created_at=datetime('now','localtime')`,
-		lessonID, in.Date, in.Status, in.NewDate, in.NewStartTime, in.NewEndTime, newClass, in.Note)
+	_, err := s.Exec(`INSERT INTO schedule_changes(lesson_id,original_date,status,new_date,new_start_time,new_end_time,new_class_id,note,tag)
+VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(lesson_id,original_date) DO UPDATE SET
+status=excluded.status,new_date=excluded.new_date,new_start_time=excluded.new_start_time,new_end_time=excluded.new_end_time,new_class_id=excluded.new_class_id,note=excluded.note,tag=excluded.tag,created_at=datetime('now','localtime')`,
+		lessonID, in.Date, in.Status, in.NewDate, in.NewStartTime, in.NewEndTime, newClass, in.Note, in.Tag)
 	if err != nil {
 		if strings.Contains(err.Error(), "FOREIGN KEY") {
 			return scheduleChange{}, errNotFound
@@ -1363,10 +1363,10 @@ status=excluded.status,new_date=excluded.new_date,new_start_time=excluded.new_st
 func (s *store) scheduleChangeByLessonDate(lessonID int64, date string) (scheduleChange, error) {
 	var change scheduleChange
 	err := s.QueryRow(`SELECT ch.id,ch.lesson_id,ch.original_date,ch.status,ch.new_date,ch.new_start_time,ch.new_end_time,
-COALESCE(ch.new_class_id,0),COALESCE(c.name,''),ch.note
+COALESCE(ch.new_class_id,0),COALESCE(c.name,''),ch.note,ch.tag
 FROM schedule_changes ch LEFT JOIN classes c ON c.id=ch.new_class_id
 WHERE ch.lesson_id=? AND ch.original_date=?`, lessonID, date).
-		Scan(&change.ID, &change.LessonID, &change.Date, &change.Status, &change.NewDate, &change.NewStartTime, &change.NewEndTime, &change.NewClassID, &change.NewClassName, &change.Note)
+		Scan(&change.ID, &change.LessonID, &change.Date, &change.Status, &change.NewDate, &change.NewStartTime, &change.NewEndTime, &change.NewClassID, &change.NewClassName, &change.Note, &change.Tag)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = errNotFound
 	}

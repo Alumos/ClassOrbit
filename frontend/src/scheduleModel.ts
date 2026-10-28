@@ -146,6 +146,7 @@ export type ChangeRequest = {
   newEndTime: string
   newClassId: number
   note: string
+  tag: string
 }
 export type DropPlan = { kind: 'none' | 'move' | 'swap'; reason?: string; changes: ChangeRequest[] }
 
@@ -175,6 +176,7 @@ export function planDrop(grid: WeekGrid, from: { date: string; period: number },
     newEndTime: period.endTime,
     newClassId: occurrence.classId,
     note: '',
+    tag: '',
   })
   const changes = [moveTo(source.occurrence, to.date, targetPeriod)]
   if (target?.occurrence) {
@@ -188,4 +190,24 @@ export function planDrop(grid: WeekGrid, from: { date: string; period: number },
 
 export function changeNote(kind: 'move' | 'swap') {
   return kind === 'swap' ? '拖动互换' : '拖动调课'
+}
+
+export type ChangeTag = 'occupied' | 'conflict' | 'other' | 'rescheduled'
+
+/** 变动的展示类型：换课看状态，其余看具体标记。 */
+export function changeTagOf(change?: ScheduleChange): ChangeTag | '' {
+  if (!change) return ''
+  if (change.status === 'rescheduled') return 'rescheduled'
+  if (change.tag === 'conflict' || change.tag === 'other') return change.tag
+  return 'occupied'
+}
+
+export function changeTagLabel(tag: ChangeTag | ''): string {
+  switch (tag) {
+    case 'conflict': return '活动冲突'
+    case 'other': return '其他事项'
+    case 'rescheduled': return '换课'
+    case 'occupied': return '被占课'
+    default: return ''
+  }
 }

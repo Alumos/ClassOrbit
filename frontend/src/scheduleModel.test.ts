@@ -49,8 +49,8 @@ describe('week grid', () => {
     const grid = buildWeekGrid({
       ...data,
       changes: [
-        { id: 1, lessonId: 1, date: '2026-09-07', status: 'occupied', newDate: '', newStartTime: '', newEndTime: '', newClassId: 0, newClassName: '', note: '开会' },
-        { id: 2, lessonId: 2, date: '2026-09-08', status: 'rescheduled', newDate: '2026-09-10', newStartTime: '09:40', newEndTime: '10:20', newClassId: 20, newClassName: '四 2 班', note: '调课' },
+        { id: 1, lessonId: 1, date: '2026-09-07', status: 'occupied', newDate: '', newStartTime: '', newEndTime: '', newClassId: 0, newClassName: '', note: '开会', tag: '' },
+        { id: 2, lessonId: 2, date: '2026-09-08', status: 'rescheduled', newDate: '2026-09-10', newStartTime: '09:40', newEndTime: '10:20', newClassId: 20, newClassName: '四 2 班', note: '调课', tag: '' },
       ],
     }, monday)
     expect(findWeekCell(grid, at('2026-09-07', 1))?.state).toBe('occupied')
@@ -80,7 +80,7 @@ describe('drag and drop planning', () => {
       newStartTime: '09:40',
       newEndTime: '10:20',
       newClassId: 10,
-      note: '',
+      note: '', tag: '',
     }])
   })
 
@@ -101,7 +101,7 @@ describe('drag and drop planning', () => {
     expect(emptySource.reason).toBeTruthy()
     const occupied = buildWeekGrid({
       ...data,
-      changes: [{ id: 3, lessonId: 1, date: '2026-09-07', status: 'occupied', newDate: '', newStartTime: '', newEndTime: '', newClassId: 0, newClassName: '', note: '' }],
+      changes: [{ id: 3, lessonId: 1, date: '2026-09-07', status: 'occupied', newDate: '', newStartTime: '', newEndTime: '', newClassId: 0, newClassName: '', note: '', tag: '' }],
     }, monday)
     const blocked = planDrop(occupied, at('2026-09-08', 2), at('2026-09-07', 1))
     expect(blocked.kind).toBe('none')
@@ -111,7 +111,7 @@ describe('drag and drop planning', () => {
   it('re-drags a moved lesson against its original date', () => {
     const grid = buildWeekGrid({
       ...data,
-      changes: [{ id: 4, lessonId: 1, date: '2026-09-07', status: 'rescheduled', newDate: '2026-09-09', newStartTime: '09:40', newEndTime: '10:20', newClassId: 10, newClassName: '三 1 班', note: '' }],
+      changes: [{ id: 4, lessonId: 1, date: '2026-09-07', status: 'rescheduled', newDate: '2026-09-09', newStartTime: '09:40', newEndTime: '10:20', newClassId: 10, newClassName: '三 1 班', note: '', tag: '' }],
     }, monday)
     expect(findWeekCell(grid, at('2026-09-09', 3))?.state).toBe('moved')
     const plan = planDrop(grid, at('2026-09-09', 3), at('2026-09-11', 1))

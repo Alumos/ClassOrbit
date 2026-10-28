@@ -139,6 +139,7 @@ type scheduleSettingsInput struct {
 type scheduleChangeInput struct {
 	Date         string `json:"date"`
 	Status       string `json:"status"`
+	Tag          string `json:"tag"`
 	NewDate      string `json:"newDate"`
 	NewStartTime string `json:"newStartTime"`
 	NewEndTime   string `json:"newEndTime"`
@@ -317,6 +318,7 @@ type scheduleChange struct {
 	NewClassID   int64  `json:"newClassId"`
 	NewClassName string `json:"newClassName"`
 	Note         string `json:"note"`
+	Tag          string `json:"tag"`
 }
 
 // scheduleData is returned by GET /api/schedule.

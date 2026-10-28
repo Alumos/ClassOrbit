@@ -121,6 +121,7 @@ export type ScheduleChange = {
   newClassId: number
   newClassName: string
   note: string
+  tag: string
 }
 
 export type ScheduleData = { lessons: ScheduleLesson[]; changes: ScheduleChange[]; settings: ScheduleSettings }

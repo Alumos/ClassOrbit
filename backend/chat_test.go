@@ -433,7 +433,7 @@ func TestChatClearConcurrency(t *testing.T) {
 func TestChatUpgradeBackup(t *testing.T) {
 	s := testStore(t)
 	// A genuine v4 shape, not just a lowered version number.
-	if _, err := s.Exec(`DROP TRIGGER revoke_chat_attendance; DROP TRIGGER revoke_chat_record; DROP TRIGGER revoke_chat_student; DROP TRIGGER revoke_chat_class; DROP TABLE student_chat_sessions; DELETE FROM schema_migrations WHERE version=5;`); err != nil {
+	if _, err := s.Exec(`DROP TRIGGER revoke_chat_attendance; DROP TRIGGER revoke_chat_record; DROP TRIGGER revoke_chat_student; DROP TRIGGER revoke_chat_class; DROP TABLE student_chat_sessions; DELETE FROM schema_migrations WHERE version>=5; ALTER TABLE schedule_changes DROP COLUMN tag;`); err != nil {
 		t.Fatal(err)
 	}
 	class, err := s.createClass(classInput{Grade: "二", ClassNo: "1"})

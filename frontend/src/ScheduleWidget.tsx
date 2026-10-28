@@ -5,8 +5,8 @@ import {
 } from 'lucide-react'
 import { api, json } from './api'
 import { Dialog } from './dialog'
-import { buildOccurrences, buildWeekGrid, changeNote, dateAt, dateKey, findWeekCell, mondayOf, planDrop, semesterWeek, weekdayOf } from './scheduleModel'
-import type { Occurrence, WeekCell } from './scheduleModel'
+import { buildOccurrences, buildWeekGrid, changeNote, changeTagLabel, changeTagOf, dateAt, dateKey, findWeekCell, mondayOf, planDrop, semesterWeek, weekdayOf } from './scheduleModel'
+import type { Occurrence } from './scheduleModel'
 import { Select, SelectItem } from './select'
 import { Button, Input } from './ui'
 import type { AttendanceSuggestion, ClassItem, Notify, ScheduleData, ScheduleLesson, SchedulePeriod, ScheduleSettings } from './types'
@@ -44,7 +44,7 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
   const [settingsDraft, setSettingsDraft] = useState<ScheduleSettings>(emptyData.settings)
   const [changeTarget, setChangeTarget] = useState<Occurrence | null>(null)
   const [changeMode, setChangeMode] = useState<'occupied' | 'rescheduled'>('occupied')
-  const [changeForm, setChangeForm] = useState({ newDate: '', newStartTime: '', newEndTime: '', newClassId: '', note: '' })
+  const [changeForm, setChangeForm] = useState({ newDate: '', newStartTime: '', newEndTime: '', newClassId: '', note: '', tag: '' })
   const [busy, setBusy] = useState(false)
   const [now, setNow] = useState(() => new Date())
   const [serverOffsetMs, setServerOffsetMs] = useState(0)
@@ -52,6 +52,7 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
   const fileRef = useRef<HTMLInputElement>(null)
   const [view, setView] = useState<'week' | 'regular'>('week')
   const [weekOffset, setWeekOffset] = useState(0)
+  const [cardMenu, setCardMenu] = useState<{ x: number; y: number; occurrence: Occurrence } | null>(null)
   const [dragFrom, setDragFrom] = useState<{ date: string; period: number } | null>(null)
   const [overCell, setOverCell] = useState('')
 
@@ -122,10 +123,11 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
     finally { setBusy(false) }
   }
 
-  const openChange = (item: Occurrence, mode: 'occupied' | 'rescheduled') => {
+  const openChange = (item: Occurrence, mode: 'occupied' | 'rescheduled', tag = '') => {
+    setCardMenu(null)
     const nextDay = dateAt(item.date, item.startTime); nextDay.setDate(nextDay.getDate() + 1)
     setChangeTarget(item); setChangeMode(mode)
-    setChangeForm({ newDate: dateKey(nextDay), newStartTime: item.startTime, newEndTime: item.endTime, newClassId: String(item.classId), note: '' })
+    setChangeForm({ newDate: dateKey(nextDay), newStartTime: item.startTime, newEndTime: item.endTime, newClassId: String(item.classId), note: '', tag: mode === 'occupied' ? (tag || 'occupied') : '' })
   }
 
   const saveChange = async () => {
@@ -133,7 +135,7 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
     setBusy(true)
     try {
       const body = changeMode === 'occupied'
-        ? { date: changeTarget.change?.date || changeTarget.date, status: 'occupied', note: changeForm.note }
+        ? { date: changeTarget.change?.date || changeTarget.date, status: 'occupied', tag: changeForm.tag || 'occupied', note: changeForm.note }
         : { date: changeTarget.change?.date || changeTarget.date, status: 'rescheduled', ...changeForm, newClassId: Number(changeForm.newClassId) || 0 }
       await api(`/schedule/${changeTarget.lesson.id}/changes`, json('PUT', body))
       await refresh(); setChangeTarget(null); notify(changeMode === 'occupied' ? '占课标记已保存' : '换课安排已保存')
@@ -206,7 +208,8 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
     } finally { setBusy(false) }
   }
 
-  const renderWeekBoard = () => <div className="week-board">
+  const renderWeekBoard = () => <>
+    <div className="week-board">
     <div className="week-toolbar">
       <div className="week-toolbar-nav">
         <button className="week-nav-button" onClick={() => setWeekOffset(value => value - 1)} title="上一周" aria-label="上一周"><ChevronLeft size={15} /></button>
@@ -237,17 +240,16 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
               onDragOver={event => { if (!day.inSemester || !dragFrom) return; event.preventDefault(); setOverCell(key) }}
               onDragLeave={() => setOverCell(current => current === key ? '' : current)}
               onDrop={event => { event.preventDefault(); void dropOnto(target) }}>
-              {occurrence && <div className={`week-card ${dragging ? 'is-dragging' : ''}`}
+              {occurrence && <div className={`week-card week-card-${changeTagOf(occurrence.change) || 'normal'} ${dragging ? 'is-dragging' : ''}`}
                 draggable={cell?.state === 'lesson' || cell?.state === 'moved'}
                 onDragStart={event => { setDragFrom(target); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', key) }}
-                onDragEnd={() => { setDragFrom(null); setOverCell('') }}>
+                onDragEnd={() => { setDragFrom(null); setOverCell('') }} onContextMenu={event => { event.preventDefault(); setCardMenu({ x: event.clientX, y: event.clientY, occurrence }) }}>
                 <div className="week-card-main">
-                  <strong className="week-card-class">{occurrence.className}</strong>
+                  <strong className="week-card-class">{occurrence.className}{occurrence.change && <span className="week-card-badge">{changeTagLabel(changeTagOf(occurrence.change))}</span>}</strong>
                   <span className="week-card-course">{occurrence.lesson.course}</span>
                   <small className="week-card-meta"><MapPin size={11} />{occurrence.location}</small>
                 </div>
-                {cell?.state === 'moved' && <span className="week-card-badge">换课</span>}
-                {cell?.state === 'occupied' && <span className="week-card-badge">被占</span>}
+                
                 {occurrence.change && <button className="week-card-undo" title="撤销本次变动" aria-label="撤销本次变动" onClick={event => { event.stopPropagation(); void undoChange(occurrence) }}><X size={12} /></button>}
               </div>}
             </div>
@@ -256,6 +258,17 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
       </div>
     </div>
   </div>
+    {cardMenu && <>
+      <div className="week-menu-backdrop" onClick={() => setCardMenu(null)} onContextMenu={event => { event.preventDefault(); setCardMenu(null) }} />
+      <div className="week-context-menu" role="menu" style={{ left: cardMenu.x, top: cardMenu.y }}>
+        <span className="week-context-title">{cardMenu.occurrence.className} · {cardMenu.occurrence.lesson.course}</span>
+        <button role="menuitem" onClick={() => openChange(cardMenu.occurrence, 'occupied', 'occupied')}><UserRoundX size={14} />标记被占课</button>
+        <button role="menuitem" onClick={() => openChange(cardMenu.occurrence, 'occupied', 'conflict')}><CalendarClock size={14} />标记活动冲突</button>
+        <button role="menuitem" onClick={() => openChange(cardMenu.occurrence, 'rescheduled')}><ArrowLeftRight size={14} />调整到其他时间…</button>
+        {cardMenu.occurrence.change && <button role="menuitem" className="week-context-danger" onClick={() => { const item = cardMenu.occurrence; setCardMenu(null); void undoChange(item) }}><X size={14} />撤销本次变动</button>}
+      </div>
+    </>}
+  </>
   const nextDateLabel = next ? (next.date === today ? '今天' : next.date === dateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)) ? '明天' : weekdays[weekdayOf(dateAt(next.date)) - 1] || next.date.slice(5)) : ''
   const editPeriod = data.settings.periods.find(item => item.period === editing?.period)
 
@@ -323,7 +336,7 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
     </Dialog>}
 
     {changeTarget && <Dialog open onOpenChange={open => { if (!open) setChangeTarget(null) }} title="标记课程变动" description={`${changeTarget.date} ${changeTarget.startTime} · ${changeTarget.className}`} footer={<><Button variant="outline" onClick={() => setChangeTarget(null)}>取消</Button><Button disabled={busy || (changeMode === 'rescheduled' && !changeForm.newDate)} onClick={() => void saveChange()}>{changeMode === 'occupied' ? <UserRoundX size={15} /> : <ArrowLeftRight size={15} />}{changeMode === 'occupied' ? '保存占课标记' : '确认换课'}</Button></>}>
-      <div className="form-stack"><div className="segment segment-full"><button className={changeMode === 'occupied' ? 'active' : ''} onClick={() => setChangeMode('occupied')}><UserRoundX size={14} />被占课</button><button className={changeMode === 'rescheduled' ? 'active' : ''} onClick={() => setChangeMode('rescheduled')}><ArrowLeftRight size={14} />换课</button></div>{changeMode === 'rescheduled' && <><div className="field"><label>新的日期</label><Input type="date" value={changeForm.newDate} onChange={event => setChangeForm(current => ({ ...current, newDate: event.target.value }))} /></div><div className="class-fields"><div className="field"><label>上课</label><Input type="time" value={changeForm.newStartTime} onChange={event => setChangeForm(current => ({ ...current, newStartTime: event.target.value }))} /></div><div className="field"><label>下课</label><Input type="time" value={changeForm.newEndTime} onChange={event => setChangeForm(current => ({ ...current, newEndTime: event.target.value }))} /></div></div><div className="field"><label>班级 <span>可同时换班</span></label><Select value={changeForm.newClassId || undefined} onValueChange={value => setChangeForm(current => ({ ...current, newClassId: value }))} placeholder="选择班级">{classes.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</Select></div></>}<div className="field"><label>备注 <span>选填</span></label><Input maxLength={50} placeholder={changeMode === 'occupied' ? '例如：王老师临时使用教室' : '例如：与王老师调课'} value={changeForm.note} onChange={event => setChangeForm(current => ({ ...current, note: event.target.value }))} /></div></div>
+      <div className="form-stack"><div className="segment segment-full"><button className={changeMode === 'occupied' && changeForm.tag !== 'conflict' ? 'active' : ''} onClick={() => { setChangeMode('occupied'); setChangeForm(current => ({ ...current, tag: 'occupied' })) }}><UserRoundX size={14} />被占课</button><button className={changeMode === 'occupied' && changeForm.tag === 'conflict' ? 'active' : ''} onClick={() => { setChangeMode('occupied'); setChangeForm(current => ({ ...current, tag: 'conflict' })) }}><CalendarClock size={14} />活动冲突</button><button className={changeMode === 'rescheduled' ? 'active' : ''} onClick={() => { setChangeMode('rescheduled'); setChangeForm(current => ({ ...current, tag: '' })) }}><ArrowLeftRight size={14} />换课</button></div>{changeMode === 'rescheduled' && <><div className="field"><label>新的日期</label><Input type="date" value={changeForm.newDate} onChange={event => setChangeForm(current => ({ ...current, newDate: event.target.value }))} /></div><div className="class-fields"><div className="field"><label>上课</label><Input type="time" value={changeForm.newStartTime} onChange={event => setChangeForm(current => ({ ...current, newStartTime: event.target.value }))} /></div><div className="field"><label>下课</label><Input type="time" value={changeForm.newEndTime} onChange={event => setChangeForm(current => ({ ...current, newEndTime: event.target.value }))} /></div></div><div className="field"><label>班级 <span>可同时换班</span></label><Select value={changeForm.newClassId || undefined} onValueChange={value => setChangeForm(current => ({ ...current, newClassId: value }))} placeholder="选择班级">{classes.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>)}</Select></div></>}<div className="field"><label>备注 <span>选填</span></label><Input maxLength={50} placeholder={changeMode === 'occupied' ? '例如：王老师临时使用教室' : '例如：与王老师调课'} value={changeForm.note} onChange={event => setChangeForm(current => ({ ...current, note: event.target.value }))} /></div></div>
     </Dialog>}
   </>
 }

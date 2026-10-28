@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-const currentSchemaVersion = 5
+const currentSchemaVersion = 6
 
 // schemaMigration is append-only. The original ClassOrbit schema predates
 // versioned migrations, so migrate() first guarantees the baseline and then
@@ -29,6 +29,7 @@ func (s *store) applyVersionedMigrations() error {
 		{version: 3, apply: migrateQRLogin},
 		{version: 4, apply: migrateStorageIndexes},
 		{version: 5, apply: migrateStudentChat},
+		{version: 6, apply: migrateScheduleChangeTags},
 	}
 	for _, migration := range migrations {
 		var applied bool
@@ -239,5 +240,18 @@ func migrateStudentChat(tx *sql.Tx) error {
    DELETE FROM student_chat_sessions WHERE attendance_session_id IN (SELECT id FROM attendance_sessions WHERE class_id=NEW.id);
  END;
  `)
+	return err
+}
+
+// 变动类型只用于展示与配色；行为仍由 occupied/rescheduled 两种状态决定。
+func migrateScheduleChangeTags(tx *sql.Tx) error {
+	exists, err := migrationColumnExists(tx, "schedule_changes", "tag")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err = tx.Exec("ALTER TABLE schedule_changes ADD COLUMN tag TEXT NOT NULL DEFAULT ''")
 	return err
 }

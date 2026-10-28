@@ -94,7 +94,7 @@ describe('week timetable drop behaviour', () => {
     expect(call.init?.method).toBe('PUT')
     expect(JSON.parse(String(call.init?.body))).toEqual({
       lessonId: 1, date: mondayKey, status: 'rescheduled', newDate: thursdayKey,
-      newStartTime: '09:40', newEndTime: '10:20', newClassId: 10, note: '拖动调课',
+      newStartTime: '09:40', newEndTime: '10:20', newClassId: 10, note: '拖动调课', tag: '',
     })
   })
 
@@ -104,8 +104,8 @@ describe('week timetable drop behaviour', () => {
     await waitFor(() => expect(state.calls.filter(call => call.path === '/schedule/2/changes')).toHaveLength(1))
     const bodies = state.calls.filter(call => call.path.includes('/changes')).map(call => JSON.parse(String(call.init?.body)))
     expect(bodies).toHaveLength(2)
-    expect(bodies).toContainEqual({ lessonId: 1, date: mondayKey, status: 'rescheduled', newDate: tuesdayKey, newStartTime: '08:50', newEndTime: '09:30', newClassId: 10, note: '拖动互换' })
-    expect(bodies).toContainEqual({ lessonId: 2, date: tuesdayKey, status: 'rescheduled', newDate: mondayKey, newStartTime: '08:00', newEndTime: '08:40', newClassId: 20, note: '拖动互换' })
+    expect(bodies).toContainEqual({ lessonId: 1, date: mondayKey, status: 'rescheduled', newDate: tuesdayKey, newStartTime: '08:50', newEndTime: '09:30', newClassId: 10, note: '拖动互换', tag: '' })
+    expect(bodies).toContainEqual({ lessonId: 2, date: tuesdayKey, status: 'rescheduled', newDate: mondayKey, newStartTime: '08:00', newEndTime: '08:40', newClassId: 20, note: '拖动互换', tag: '' })
   })
 
   it('refuses to drop onto an occupied slot', async () => {
@@ -115,5 +115,25 @@ describe('week timetable drop behaviour', () => {
     drop(mondayKey, 1, tuesdayKey, 2)
     await new Promise(resolve => setTimeout(resolve, 20))
     expect(state.calls.filter(call => call.path.includes('/changes'))).toHaveLength(0)
+  })
+})
+
+describe('week timetable card menu', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    state.calls.length = 0
+    state.data.changes = []
+  })
+
+  it('marks a conflict from the right-click menu', async () => {
+    await openWeekBoard()
+    const card = document.querySelector(`[data-date="${mondayKey}"][data-period="1"] .week-card`) as HTMLElement
+    fireEvent.contextMenu(card, { clientX: 40, clientY: 60 })
+    fireEvent.click(await screen.findByText('标记活动冲突'))
+    fireEvent.click(await screen.findByText('保存占课标记'))
+    await waitFor(() => expect(state.calls.filter(call => call.path === '/schedule/1/changes')).toHaveLength(1))
+    const body = JSON.parse(String(state.calls.find(call => call.path === '/schedule/1/changes')!.init?.body))
+    expect(body.status).toBe('occupied')
+    expect(body.tag).toBe('conflict')
   })
 })

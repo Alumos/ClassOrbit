@@ -10,11 +10,26 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
+// SQLite file URIs require an absolute path with a leading slash before the
+// drive letter. Without it url.URL renders "file://E:/..." and the drive is
+// parsed as the URI host, so the driver cannot open the file at all.
+func sqliteFileURL(path string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	slashed := filepath.ToSlash(path)
+	if !strings.HasPrefix(slashed, "/") {
+		slashed = "/" + slashed
+	}
+	return (&url.URL{Scheme: "file", Path: slashed}).String()
+}
+
 func validateBackupFile(path string) error {
-	fileURL := (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
+	fileURL := sqliteFileURL(path)
 	db, err := sql.Open("sqlite", fileURL+"?mode=ro&_pragma=query_only(1)")
 	if err != nil {
 		return err
@@ -155,7 +170,7 @@ func (s *store) createBackup() (string, error) {
 func (s *store) backupTo(path string) error {
 	// An independent WAL reader snapshots committed data without occupying the
 	// application's single writer connection throughout VACUUM INTO.
-	fileURL := (&url.URL{Scheme: "file", Path: filepath.ToSlash(s.path)}).String()
+	fileURL := sqliteFileURL(s.path)
 	db, err := sql.Open("sqlite", fileURL+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return err
@@ -225,7 +240,7 @@ func backupBeforeUpgrade(path string) (string, error) {
 	} else if err != nil {
 		return "", err
 	}
-	fileURL := (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
+	fileURL := sqliteFileURL(path)
 	db, err := sql.Open("sqlite", fileURL+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return "", err

@@ -700,3 +700,48 @@ td { height: 43px; padding: 6px 12px; }
   .chat-checkin-resume { flex-wrap: wrap; }
 }
 .chat-composer .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* ---------- 本周课表（拖动调课） ---------- */
+.schedule-view-switch { margin-bottom: 10px; }
+.week-board { display: flex; flex-direction: column; gap: 10px; }
+.week-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.week-toolbar-nav { display: flex; align-items: center; gap: 6px; font-size: var(--text-md); }
+.week-nav-button { height: 28px; min-width: 28px; padding: 0 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font-size: var(--text-sm); }
+.week-nav-button:hover { background: var(--subtle); }
+.week-toolbar-hint { color: var(--muted); font-size: var(--text-xs); }
+.week-grid-scroll { overflow: auto; max-height: 62vh; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.week-grid { display: grid; grid-template-columns: 92px repeat(5, minmax(120px, 1fr)); }
+.week-corner, .week-day-head { position: sticky; top: 0; z-index: 3; background: #fafafa; border-bottom: 1px solid var(--border); }
+.week-corner { left: 0; z-index: 4; display: flex; align-items: center; padding: 8px 10px; color: var(--muted); font-size: var(--text-xs); }
+.week-day-head { display: flex; flex-direction: column; gap: 1px; padding: 7px 10px; border-left: 1px solid var(--border); }
+.week-day-name { font-size: var(--text-sm); font-weight: 600; }
+.week-day-date { color: var(--muted); font-size: var(--text-xs); }
+.week-day-badge { color: var(--muted); font-size: 10px; }
+.week-day-head.is-today { background: #18181b; color: #fff; }
+.week-day-head.is-today .week-day-date, .week-day-head.is-today .week-day-badge { color: #d4d4d8; }
+.week-period-head { position: sticky; left: 0; z-index: 2; background: #fafafa; border-bottom: 1px solid var(--border); padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.week-period-name { font-size: var(--text-sm); font-weight: 600; }
+.week-period-time { color: var(--muted); font-size: var(--text-xs); }
+.week-cell { position: relative; min-height: 66px; padding: 4px; border-bottom: 1px solid var(--border); border-left: 1px solid var(--border); display: flex; }
+.week-cell.is-empty { background: repeating-linear-gradient(135deg, transparent, transparent 6px, rgba(0, 0, 0, .025) 6px, rgba(0, 0, 0, .025) 7px); }
+.week-cell.is-over { outline: 2px dashed #18181b; outline-offset: -3px; background: var(--subtle); }
+.week-cell.is-disabled { opacity: .45; }
+.week-cell.is-occupied { background: var(--subtle); }
+.week-card { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 6px 7px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: 0 1px 2px rgba(0, 0, 0, .04); cursor: grab; }
+.week-card:active { cursor: grabbing; }
+.week-card.is-dragging { opacity: .45; border-style: dashed; }
+.week-card-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.week-card-class { font-size: var(--text-sm); line-height: 1.15; }
+.week-card-course { color: var(--muted); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.week-card-meta { display: inline-flex; align-items: center; gap: 3px; color: #a1a1aa; font-size: 10px; }
+.week-card-badge { align-self: flex-start; padding: 0 5px; border-radius: 999px; background: #18181b; color: #fff; font-size: 9px; line-height: 15px; }
+.week-card-undo { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--muted); cursor: pointer; opacity: 0; }
+.week-card:hover .week-card-undo, .week-card-undo:focus-visible { opacity: 1; }
+.week-cell.is-occupied .week-card { border-style: dashed; opacity: .8; }
+@media (max-width: 900px) {
+  .week-grid { min-width: 720px; }
+  .week-card-undo { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .week-card, .week-nav-button { transition: none; }
+}

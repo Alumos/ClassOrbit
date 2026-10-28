@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import {
-  ArrowLeft, ArrowLeftRight, CalendarClock, CalendarDays, ChevronDown, ClipboardCheck, FileSpreadsheet,
-  MapPin, Pencil, Plus, Settings2, Trash2, UserRoundX, X,
+  ArrowLeft, ArrowLeftRight, CalendarClock, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck,
+  FileSpreadsheet, MapPin, Pencil, Plus, Settings2, Trash2, UserRoundX, X,
 } from 'lucide-react'
 import { api, json } from './api'
 import { Dialog } from './dialog'
+import { buildOccurrences, buildWeekGrid, changeNote, dateAt, dateKey, findWeekCell, mondayOf, planDrop, semesterWeek, weekdayOf } from './scheduleModel'
+import type { Occurrence, WeekCell } from './scheduleModel'
 import { Select, SelectItem } from './select'
 import { Button, Input } from './ui'
-import type { AttendanceSuggestion, ClassItem, Notify, ScheduleChange, ScheduleData, ScheduleLesson, SchedulePeriod, ScheduleSettings } from './types'
+import type { AttendanceSuggestion, ClassItem, Notify, ScheduleData, ScheduleLesson, SchedulePeriod, ScheduleSettings } from './types'
+
+export { buildOccurrences, semesterWeek }
 
 const weekdays = ['周一', '周二', '周三', '周四', '周五']
 const locations = ['机房 1', '机房 2', '教室']
@@ -18,75 +22,9 @@ const defaultPeriods: SchedulePeriod[] = [
 const emptyData: ScheduleData = { lessons: [], changes: [], settings: { semesterStart: '', semesterEnd: '', periods: defaultPeriods } }
 const emptyLessonForm = { classId: '', course: '信息科技', locationOdd: '机房 1', locationEven: '机房 1' }
 
-type Occurrence = {
-  key: string
-  lesson: ScheduleLesson
-  date: string
-  startTime: string
-  endTime: string
-  classId: number
-  className: string
-  location: string
-  week?: number
-  change?: ScheduleChange
-  movedHere?: boolean
-}
-
 type EditingCell = { weekday: number; period: number; lesson?: ScheduleLesson }
 
-const pad = (value: number) => String(value).padStart(2, '0')
-const dateKey = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-const dateAt = (date: string, time = '12:00') => new Date(`${date}T${time}:00`)
-const weekdayOf = (date: Date) => ((date.getDay() + 6) % 7) + 1
 const shortDate = (date: string) => date ? date.replaceAll('-', '.') : ''
-
-export function semesterWeek(settings: ScheduleSettings, date: string) {
-  if (!settings.semesterStart || date < settings.semesterStart || date > settings.semesterEnd) return undefined
-  return Math.floor((dateAt(date).getTime() - dateAt(settings.semesterStart).getTime()) / 604800000) + 1
-}
-
-function lessonLocation(lesson: ScheduleLesson, week?: number) {
-  return week && week % 2 === 0 ? lesson.locationEven : lesson.locationOdd
-}
-
-export function buildOccurrences(data: ScheduleData, from: Date, days: number) {
-  const occurrences: Occurrence[] = []
-  const changes = new Map(data.changes.map(change => [`${change.lessonId}-${change.date}`, change]))
-  const lessons = new Map<number, ScheduleLesson[]>()
-  const lessonsByID = new Map(data.lessons.map(lesson => [lesson.id, lesson]))
-  data.lessons.forEach(lesson => {
-    const day = lessons.get(lesson.weekday) || []
-    day.push(lesson); lessons.set(lesson.weekday, day)
-  })
-  for (let offset = 0; offset < days; offset++) {
-    const day = new Date(from.getFullYear(), from.getMonth(), from.getDate() + offset)
-    const date = dateKey(day)
-    if (data.settings.semesterStart && (date < data.settings.semesterStart || date > data.settings.semesterEnd)) continue
-    for (const lesson of lessons.get(weekdayOf(day)) || []) {
-      const week = semesterWeek(data.settings, date)
-      occurrences.push({
-        key: `${lesson.id}-${date}`, lesson, date, startTime: lesson.startTime, endTime: lesson.endTime,
-        classId: lesson.classId, className: lesson.className, location: lessonLocation(lesson, week), week,
-        change: changes.get(`${lesson.id}-${date}`),
-      })
-    }
-  }
-  for (const change of data.changes.filter(item => item.status === 'rescheduled' && item.newDate)) {
-    const lesson = lessonsByID.get(change.lessonId)
-    if (!lesson) continue
-    const rangeStart = new Date(from.getFullYear(), from.getMonth(), from.getDate())
-    const target = dateAt(change.newDate, change.newStartTime)
-    if (target < rangeStart || target >= new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate() + days)) continue
-    const week = semesterWeek(data.settings, change.newDate)
-    occurrences.push({
-      key: `${lesson.id}-${change.date}-moved`, lesson, date: change.newDate,
-      startTime: change.newStartTime, endTime: change.newEndTime,
-      classId: change.newClassId || lesson.classId, className: change.newClassName || lesson.className,
-      location: lessonLocation(lesson, week), week, change, movedHere: true,
-    })
-  }
-  return occurrences.sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`))
-}
 
 function relativeLabel(target: Date, now: Date) {
   const minutes = Math.max(0, Math.ceil((target.getTime() - now.getTime()) / 60000))
@@ -112,6 +50,10 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
   const [serverOffsetMs, setServerOffsetMs] = useState(0)
   const [serverClockReady, setServerClockReady] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [view, setView] = useState<'week' | 'regular'>('week')
+  const [weekOffset, setWeekOffset] = useState(0)
+  const [dragFrom, setDragFrom] = useState<{ date: string; period: number } | null>(null)
+  const [overCell, setOverCell] = useState('')
 
   const refresh = async () => {
     try {
@@ -229,6 +171,91 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
     } catch (error) { notify((error as Error).message, 'error') }
   }
 
+  const weekMonday = useMemo(() => {
+    const start = mondayOf(dateAt(today))
+    start.setDate(start.getDate() + weekOffset * 7)
+    return start
+  }, [today, weekOffset])
+  const weekGrid = useMemo(() => buildWeekGrid(data, weekMonday), [data, weekMonday])
+  const weekLabel = useMemo(() => {
+    const first = weekGrid.days[0]
+    const last = weekGrid.days[weekGrid.days.length - 1]
+    if (!first || !last) return ''
+    const range = `${shortDate(first.date).slice(5)} - ${shortDate(last.date).slice(5)}`
+    return first.week ? `第 ${first.week} 周 · ${range}` : range
+  }, [weekGrid])
+
+  const dropOnto = async (target: { date: string; period: number }) => {
+    if (!dragFrom) return
+    const plan = planDrop(weekGrid, dragFrom, target)
+    setDragFrom(null); setOverCell('')
+    if (plan.kind === 'none') {
+      if (plan.reason) notify(plan.reason, 'error')
+      return
+    }
+    setBusy(true)
+    try {
+      for (const change of plan.changes) {
+        await api(`/schedule/${change.lessonId}/changes`, json('PUT', { ...change, note: changeNote(plan.kind) }))
+      }
+      await refresh()
+      notify(plan.kind === 'swap' ? '已互换这两节课（仅这一天生效）' : '已调整本节课时间（仅这一天生效）')
+    } catch (error) {
+      notify((error as Error).message, 'error')
+      await refresh()
+    } finally { setBusy(false) }
+  }
+
+  const renderWeekBoard = () => <div className="week-board">
+    <div className="week-toolbar">
+      <div className="week-toolbar-nav">
+        <button className="week-nav-button" onClick={() => setWeekOffset(value => value - 1)} title="上一周" aria-label="上一周"><ChevronLeft size={15} /></button>
+        <strong>{weekLabel}</strong>
+        <button className="week-nav-button" onClick={() => setWeekOffset(value => value + 1)} title="下一周" aria-label="下一周"><ChevronRight size={15} /></button>
+        {weekOffset !== 0 && <button className="week-nav-button" onClick={() => setWeekOffset(0)}>回到本周</button>}
+      </div>
+      <span className="week-toolbar-hint">拖动课程卡片到其他格子即可调课；拖到已有课程的格子会互换，只影响这一天</span>
+    </div>
+    <div className="week-grid-scroll">
+      <div className="week-grid">
+        <div className="week-corner"><span>节次</span></div>
+        {weekGrid.days.map(day => <div className={`week-day-head ${day.date === today ? 'is-today' : ''}`} key={day.date}>
+          <span className="week-day-name">{weekdays[day.weekday - 1]}</span>
+          <span className="week-day-date">{day.date.slice(5).replace('-', '.')}</span>
+          {day.week ? <span className="week-day-badge">{day.week % 2 ? '单周' : '双周'}</span> : null}
+        </div>)}
+        {weekGrid.periods.map(period => <Fragment key={period.period}>
+          <div className="week-period-head"><span className="week-period-name">第 {period.period} 节</span><span className="week-period-time">{period.startTime}</span></div>
+          {weekGrid.days.map(day => {
+            const target = { date: day.date, period: period.period }
+            const cell = findWeekCell(weekGrid, target)
+            const occurrence = cell?.occurrence
+            const key = `${day.date}-${period.period}`
+            const dragging = dragFrom?.date === day.date && dragFrom.period === period.period
+            const classes = ['week-cell', occurrence ? 'has-course' : 'is-empty', cell?.state === 'occupied' ? 'is-occupied' : '', dragging ? 'is-dragging' : '', dragFrom && overCell === key ? 'is-over' : '', day.inSemester ? '' : 'is-disabled'].filter(Boolean).join(' ')
+            return <div className={classes} key={key} data-date={day.date} data-period={period.period}
+              onDragOver={event => { if (!day.inSemester || !dragFrom) return; event.preventDefault(); setOverCell(key) }}
+              onDragLeave={() => setOverCell(current => current === key ? '' : current)}
+              onDrop={event => { event.preventDefault(); void dropOnto(target) }}>
+              {occurrence && <div className={`week-card ${dragging ? 'is-dragging' : ''}`}
+                draggable={cell?.state === 'lesson' || cell?.state === 'moved'}
+                onDragStart={event => { setDragFrom(target); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', key) }}
+                onDragEnd={() => { setDragFrom(null); setOverCell('') }}>
+                <div className="week-card-main">
+                  <strong className="week-card-class">{occurrence.className}</strong>
+                  <span className="week-card-course">{occurrence.lesson.course}</span>
+                  <small className="week-card-meta"><MapPin size={11} />{occurrence.location}</small>
+                </div>
+                {cell?.state === 'moved' && <span className="week-card-badge">换课</span>}
+                {cell?.state === 'occupied' && <span className="week-card-badge">被占</span>}
+                {occurrence.change && <button className="week-card-undo" title="撤销本次变动" aria-label="撤销本次变动" onClick={event => { event.stopPropagation(); void undoChange(occurrence) }}><X size={12} /></button>}
+              </div>}
+            </div>
+          })}
+        </Fragment>)}
+      </div>
+    </div>
+  </div>
   const nextDateLabel = next ? (next.date === today ? '今天' : next.date === dateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)) ? '明天' : weekdays[weekdayOf(dateAt(next.date)) - 1] || next.date.slice(5)) : ''
   const editPeriod = data.settings.periods.find(item => item.period === editing?.period)
 
@@ -269,6 +296,10 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
         <div className="class-fields"><div className="field"><label>单周上课地点</label><Select value={lessonForm.locationOdd} onValueChange={value => setLessonForm(currentForm => ({ ...currentForm, locationOdd: value }))}>{locations.map(item => <SelectItem key={item} value={item}>{item}</SelectItem>)}</Select></div><div className="field"><label>双周上课地点</label><Select value={lessonForm.locationEven} onValueChange={value => setLessonForm(currentForm => ({ ...currentForm, locationEven: value }))}>{locations.map(item => <SelectItem key={item} value={item}>{item}</SelectItem>)}</Select></div></div>
         <div className="schedule-form-actions">{editing.lesson && <Button variant="danger" onClick={() => void deleteLesson()}><Trash2 size={14} />删除课程</Button>}<span /><Button variant="outline" onClick={() => setEditing(null)}>取消</Button><Button onClick={() => void saveLesson()} disabled={busy || !lessonForm.classId || !lessonForm.course.trim()}>{busy ? '保存中' : '保存课程'}</Button></div>
       </div> : <>
+        <div className="segment segment-full schedule-view-switch">
+          <button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')}><CalendarDays size={14} />本周课表</button>
+          <button className={view === 'regular' ? 'active' : ''} onClick={() => setView('regular')}><Settings2 size={14} />常规课表</button>
+        </div>
         <div className="schedule-calendar-bar">
           <div><span className="schedule-calendar-icon"><CalendarDays size={17} /></span><span><strong>{data.settings.semesterStart ? `${shortDate(data.settings.semesterStart)} - ${shortDate(data.settings.semesterEnd)}` : '尚未设置本学期校历'}</strong><small>{currentWeek ? `当前第 ${currentWeek} 周 · ${currentWeek % 2 ? '单周' : '双周'}` : '校历决定周次、单双周地点和提醒范围'}</small></span></div>
           <div><Button variant="outline" size="sm" onClick={() => setConfigOpen(open => !open)}><Settings2 size={14} />校历与节次</Button><Button variant="outline" size="sm" disabled={busy} onClick={() => fileRef.current?.click()}><FileSpreadsheet size={14} />Excel 导入</Button><input ref={fileRef} type="file" accept=".xlsx,.xlsm" onChange={event => void importFile(event)} /></div>
@@ -278,7 +309,7 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
           <div className="schedule-period-settings"><div><strong>每日节次</strong><small>上午 3 节 · 下午 4 节</small></div>{settingsDraft.periods.map((period, index) => <div className="schedule-period-setting" key={period.period}><span>第 {period.period} 节</span><Input aria-label={`第 ${period.period} 节开始时间`} type="time" value={period.startTime} onChange={event => setSettingsDraft(current => ({ ...current, periods: current.periods.map((item, itemIndex) => itemIndex === index ? { ...item, startTime: event.target.value } : item) }))} /><i>至</i><Input aria-label={`第 ${period.period} 节结束时间`} type="time" value={period.endTime} onChange={event => setSettingsDraft(current => ({ ...current, periods: current.periods.map((item, itemIndex) => itemIndex === index ? { ...item, endTime: event.target.value } : item) }))} /></div>)}</div>
           <div className="schedule-config-actions"><Button variant="outline" onClick={() => { setSettingsDraft(data.settings); setConfigOpen(false) }}>取消</Button><Button disabled={busy || !settingsDraft.semesterStart || !settingsDraft.semesterEnd} onClick={() => void saveSettings()}>{busy ? '保存中' : '保存设置'}</Button></div>
         </div>}
-        <div className="schedule-grid-scroll"><div className="schedule-grid">
+        {view === 'week' ? renderWeekBoard() : <div className="schedule-grid-scroll"><div className="schedule-grid">
           <div className="schedule-grid-corner"><span>节次</span><small>时间</small></div>{weekdays.map(day => <div className="schedule-grid-day" key={day}>{day}</div>)}
           {data.settings.periods.map(period => <div className="schedule-grid-row" key={period.period}>
             <div className="schedule-period-cell"><strong>第 {period.period} 节</strong><span>{period.period <= 3 ? '上午' : '下午'}</span><small>{period.startTime} - {period.endTime}</small></div>
@@ -287,7 +318,7 @@ export function ScheduleWidget({ classes, notify, onStartAttendance }: { classes
               return <button className={`schedule-course-cell ${lesson ? 'has-course' : ''}`} key={dayIndex} onClick={() => openCell(dayIndex + 1, period.period, lesson)}>{lesson ? <><strong>{lesson.className}</strong><span>{lesson.course}</span><small><MapPin size={11} />{lesson.locationOdd === lesson.locationEven ? lesson.locationOdd : `单 ${lesson.locationOdd} · 双 ${lesson.locationEven}`}</small><Pencil size={12} /></> : <><Plus size={15} /><span>添加课程</span></>}</button>
             })}
           </div>)}
-        </div></div>
+        </div></div>}
       </>}
     </Dialog>}
 

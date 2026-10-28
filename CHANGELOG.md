@@ -4,10 +4,24 @@
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-28
+
 ### Added
 
 - 课表新增「本周课表」视图：按周一至周五显示本周每天的日期、周次与单双周上课地点，每节课是一张可拖动的卡片。
 - 拖动课程卡片到空节次即可为当天临时调课，拖到已有课程的格子会互换两节课；变动只影响当天并写入换课记录，可在卡片上撤销，常规课表保持不变。
+- 课程卡片支持右键菜单，触屏设备使用卡片右上角的「⋯」按钮：可标记被占课、标记活动冲突、调整到其他时间，或撤销本次变动。
+- 换课、被占课、活动冲突使用低饱和莫奈色和左侧色条区分，课堂上更容易辨认当前状态。
+
+### Fixed
+
+- 修复 Windows 上备份与恢复完全不可用：SQLite 文件 URI 没有正确处理盘符，相对数据目录也没有转成绝对路径，导致升级前备份、每日自动备份、手动下载备份和恢复全部失败，并且只报出误导性的 out of memory。该缺陷同时会让进程在第一次启动之后无法再次启动。
+- 备份与教学网页相关测试改为跨平台：不再断言 POSIX 权限位，也不再使用 Windows 上非法的文件名。
+
+### Notes
+
+- 数据库结构升级到 6，启动时会自动在 backups/ 目录生成 classorbit-before-schema-6-*.db 回退副本。需要回退时请使用该副本并切回 v1.9.0 镜像。
+
 
 ## [1.9.0] - 2026-09-20
 
@@ -235,7 +249,10 @@
 - 教师 API 与学生公开 API 隔离，密码使用 bcrypt 存储，登录会话只保存 Token 哈希。
 - npm 依赖审计在发布时无已知漏洞。
 
-[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/Alumos/ClassOrbit/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.10.0
+[1.9.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.9.0
+[1.8.8]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.8.8
 [1.8.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.8.0
 [1.7.1]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.7.1
 [1.7.0]: https://github.com/Alumos/ClassOrbit/releases/tag/v1.7.0

@@ -2,7 +2,7 @@
 
 ClassOrbit（智创课堂）是面向小学信息科技教师的轻量班级积分、课堂考勤与课程导航系统。Go 单进程提供 API 并托管 React 前端，数据存放在本地 SQLite，适合教师电脑、校内局域网或小型服务器部署。
 
-当前稳定版本为 `v1.8.8`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+当前稳定版本为 `v1.10.0`。版本变更见 [`CHANGELOG.md`](CHANGELOG.md)，开发、提交和 Tag 发布规则见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
 ## 已实现
 
@@ -237,14 +237,14 @@ PUBLIC_DIR=frontend/dist go run ./backend
 
 ```bash
 curl http://127.0.0.1:8080/api/health
-# {"commit":"...","database":true,"ok":true,"version":"1.1.0"}
+# {"commit":"...","database":true,"ok":true,"version":"1.10.0"}
 ```
 
 容器内也可以直接查询二进制版本：
 
 ```bash
 docker compose exec classorbit /app/classorbit --version
-# ClassOrbit 1.1.0 (<构建提交号>)
+# ClassOrbit 1.10.0 (<构建提交号>)
 ```
 
 要让同一局域网内的学生访问，可监听所有网卡：
@@ -291,4 +291,4 @@ make version
 
 聊天室默认关闭。设置 `CHAT_ENABLED=true` 后，学生学习导航会显示内置聊天室入口。只有当前课堂完成签到的学生能进入对应场次；消息只在内存中限量暂存，服务重启、结束课堂或教师清空后消失，不进入 SQLite 备份。反向代理需要支持 SSE 长连接；如代理改写 Host，可设置 `CHAT_ORIGIN`。
 
-数据库结构升级到新版本时，程序会在迁移前自动在数据目录 `backups/` 生成 `classorbit-before-schema-*.db` 回退副本。若需要回退代码，切回原 Git 标签（当前基线为 `v1.8.8`）并使用升级前数据库副本；不要用旧程序直接打开已升级数据库。
+数据库结构升级到新版本时，程序会在迁移前自动在数据目录 `backups/` 生成 `classorbit-before-schema-*.db` 回退副本。若需要回退代码，切回原 Git 标签（当前基线为 `v1.9.0`）并使用升级前数据库副本；不要用旧程序直接打开已升级数据库。
